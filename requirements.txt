@@ -1,0 +1,16 @@
+torch
+torchvision
+torchaudio
+torchrl
+torchsnapshot
+tqdm
+numpy
+omegaconf
+pandas
+hydra-core
+ipykernel
+matplotlib
+gurobipy
+scikit-learn
+scipy
+seaborn

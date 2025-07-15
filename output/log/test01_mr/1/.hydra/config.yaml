@@ -1,0 +1,10 @@
+name: test01
+output_path: output
+model_path: ${output_path}/model
+log_path: ${output_path}/log
+generated_data_path: ${output_path}/generated_data
+raw_data:
+  energy_dataset_path: data/1_processed/energy.csv
+  price_dataset_path: data/1_processed/price.csv
+seed: 7
+device: cuda
