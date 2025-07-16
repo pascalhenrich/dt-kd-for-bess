@@ -7,6 +7,8 @@ import hydra
 from hydra.core.config_store import ConfigStore
 from conf.config import HydraConfig
 from offline.DdpgAgent import DdpgAgent
+from dataset.OfflineDataset import EnergyDataset
+from offline.utils import make_env
 
 
 @hydra.main(config_path="conf", config_name="config", version_base="1.3")
@@ -16,7 +18,7 @@ def main(cfg: HydraConfig):
 
     # Folder Setup
     os.makedirs(cfg.output_path, exist_ok=True)
-    if not cfg.checkpointing:
+    if not cfg.use_pretrained:
         if os.path.exists(f'{cfg.model_path}/{cfg.name}'):
             shutil.rmtree(f'{cfg.model_path}/{cfg.name}')
     os.makedirs(f"{cfg.model_path}/{cfg.name}", exist_ok=True)
@@ -27,11 +29,20 @@ def main(cfg: HydraConfig):
         log.info('Warning: CUDA is not supported on this system. Falling back to CPU!')
         device = 'cpu'
     DEVICE = torch.device(device)
+    log.info(f'{device} initialized!')
 
      # Set Seed
     torch.manual_seed(cfg.seed)
+    log.info(f'Seed: {cfg.seed} initialized!')
 
-    DdpgAgent(cfg=cfg, datasets=None).setup()
+
+    # train = EnergyDataset(cfg.raw_data_path,48,1,'train')
+    # envs = make_env(cfg=cfg,datasets=[train],device=DEVICE)
+
+    # print(envs[0].reset())
+    agent = DdpgAgent(cfg=cfg, customer=1, device=DEVICE)
+    agent.setup()
+    agent.train()
 
     
 

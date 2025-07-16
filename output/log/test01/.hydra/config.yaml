@@ -1,8 +1,0 @@
-name: test01
-output_path: output/log
-model_path: output/model
-data:
-  energy_dataset_path: data/1_processed/energy.csv
-  price_dataset_path: data/1_processed/price.csv
-seed: 42
-device: cuda

@@ -7,22 +7,31 @@ from torchrl.collectors import SyncDataCollector
 from torchrl.data import LazyMemmapStorage, ReplayBuffer, RandomSampler
 from torchsnapshot import Snapshot, RNGState
 
-from offline.utils import make_env
+from offline.utils import make_env, make_dataset
+from pathlib import Path
 
 class DdpgAgent():
-    def __init__(self, cfg, datasets):
+    def __init__(self, cfg, customer, device):
         self._cfg = cfg
-        self._datasets = datasets
+        self._customer = customer
+        self._DEVICE = device
         
 
     def setup(self):
-        self._envs =  make_env()
+        datasets = make_dataset(cfg=self._cfg, customer=self._customer, modes=['train', 'eval', 'test'])
+        envs =  make_env(cfg=self._cfg, datasets=datasets[1:3], device=self._DEVICE)
+        self._env_eval = envs[0]
+        self._env_test = envs[1]
+        self._env_eval.evala()
+        self._env_test.evala()
+
+        action_spec = envs[0].action_spec
+        observation_spec = envs[0].observation_spec['observation']
+        
 
         policy_net = MLP(
-            in_features=1,
-            out_features=10,
-            # in_features=self._envs[0].observation_spec['observation'].shape[-1],
-            # out_features=self._envs[0].action_spec.shape.numel(),
+            in_features=observation_spec.shape[-1],
+            out_features=action_spec.shape[-1],
             depth=2,
             num_cells=[400,300],
             activation_class=torch.nn.ReLU,
@@ -34,72 +43,111 @@ class DdpgAgent():
             out_keys=['action']
         )
 
-        # actor = TensorDictSequential(
-        #         policy_module,
-        #         TanhModule(
-        #             spec=self._envs[0].full_action_spec['action'],
-        #             in_keys=['action'],
-        #             out_keys=['action'],
-        #         ),
-        #     )
+        actor = TensorDictSequential(
+            policy_module,
+            TanhModule(
+                spec=action_spec,
+                in_keys=['action'],
+                out_keys=['action'],
+            ),
+        )
         
-        # ou_module = OrnsteinUhlenbeckProcessModule(
-        #         # annealing_num_steps=5_000,
-        #         # n_steps_annealing=5_000,
-        #         spec=actor[-1].spec.clone(),
-        #     )
+        ou_module = OrnsteinUhlenbeckProcessModule(
+            annealing_num_steps=15_000,
+            n_steps_annealing=15_000,
+            spec=action_spec,
+        )
         
-        # exploration_policy = TensorDictSequential(
-        #         actor,
-        #         ou_module
-        #     )
-        
-        # critic = TensorDictModule(
-        #         module=MLP(
-        #             in_features=self._envs[0].observation_spec['observation'].shape[-1] + self._envs[0].full_action_spec['action'].shape.numel(),
-        #             out_features=1,
-        #             depth=2,
-        #             num_cells=[400,300],
-        #             activation_class=torch.nn.ReLU,
-        #         ),
-        #         in_keys=['observation', 'action'],
-        #         out_keys=['state_action_value']
-        #     )
-        
-        # collector = SyncDataCollector(create_env_fn=(make_env(cfg=self._cfg, datasets=self._datasets,device=self._device)[0]),
-        #                                 policy=exploration_policy,
-        #                                 frames_per_batch=self._cfg.algorithm.data_collector_frames_per_batch, 
-        #                                 total_frames=self._cfg.algorithm.num_iterations*self._cfg.algorithm.data_collector_frames_per_batch)
-        
-        # replay_buffer = ReplayBuffer(storage=LazyMemmapStorage(max_size=self._cfg.algorithm.replay_buffer_capacity),
-        #                                 sampler=RandomSampler(), 
-        #                                 batch_size=self._cfg.algorithm.batch_size)
+        exploration_policy = TensorDictSequential(
+            actor,
+            ou_module
+        )
 
-        # loss_module = DDPGLoss(actor_network=actor,
-        #                         value_network=critic,
-        #                         delay_actor=True,
-        #                         delay_value=True) 
-        # loss_module.make_value_estimator(value_type=ValueEstimators.TD0,
-        #                                     gamma=self._cfg.algorithm.td_gamma)
+        critic = TensorDictModule(
+            module=MLP(
+                in_features=observation_spec.shape[-1] + action_spec.shape[-1],
+                out_features=1,
+                depth=2,
+                num_cells=[400,300],
+                activation_class=torch.nn.ReLU,
+            ),
+            in_keys=['observation', 'action'],
+            out_keys=['state_action_value']
+        )
+        
+        collector = SyncDataCollector(
+            create_env_fn=(make_env(cfg=self._cfg, datasets=[datasets[0]], device=self._DEVICE)),
+            policy=exploration_policy,
+            frames_per_batch=100,
+            total_frames=1_000_000)
+        
+        replay_buffer = ReplayBuffer(
+            storage=LazyMemmapStorage(max_size=1_000_000),
+            sampler=RandomSampler(),
+            batch_size=256)
 
-        # target_updater = SoftUpdate(loss_module=loss_module,
-        #                             tau=self._cfg.algorithm.target_update_tau)
+        loss_module = DDPGLoss(
+            actor_network=actor,
+            value_network=critic,
+            delay_actor=False,
+            delay_value=True)
+        
+        loss_module.make_value_estimator(
+            value_type=ValueEstimators.TD0,
+            gamma=0.99)
 
-        # optimisers = {
-        #     "loss_actor": torch.optim.Adam(params=loss_module.actor_network.parameters(), 
-        #                                     lr=self._cfg.algorithm.network.actor_learning_rate),
-        #     "loss_value": torch.optim.Adam(params=loss_module.value_network.parameters(), 
-        #                                     lr=self._cfg.algorithm.network.critic_learning_rate),
-        # }
+        target_updater = SoftUpdate(
+            loss_module=loss_module, 
+            tau=0.005)
 
-        app_state = {
-            'actor': policy_net,
-            # 'rng_state': RNGState()
+        optimiser_dict = {
+            'loss_actor': torch.optim.Adam(params=loss_module.actor_network.parameters(), lr=1e-4),
+            'loss_value': torch.optim.Adam(params=loss_module.value_network.parameters(), lr=1e-3)
         }
 
+        self._statefull_components = {
+            'loss': loss_module,
+        }
 
-        # if self._cfg.checkpointing:
-        
-        Snapshot.take(f'{self._cfg.model_path}/{self._cfg.name}/',app_state)
-        snapshot = Snapshot(f'{self._cfg.model_path}/{self._cfg.name}/')
-        snapshot.restore(app_state)
+        self._non_statefull_components = {
+            'collector': collector,
+            'replay_buffer': replay_buffer,
+            'target_updater': target_updater,
+            'optimiser_dict': optimiser_dict,
+        }
+
+        if self._cfg.use_pretrained and any(Path(f'{self._cfg.model_path}/{self._cfg.name}/').iterdir()):
+            snapshot = Snapshot(f'{self._cfg.model_path}/{self._cfg.name}/')
+            snapshot.restore(self._statefull_components)
+
+    def train(self):
+        loss_module = self._statefull_components['loss']
+        collector = self._non_statefull_components['collector']
+        replay_buffer = self._non_statefull_components['replay_buffer']
+        target_updater = self._non_statefull_components['target_updater']
+        optimiser_dict = self._non_statefull_components['optimiser_dict']
+        exploration_policy = collector.policy
+
+        # Train
+        for iteration, batch in enumerate(collector):
+            current_frames = batch.numel()
+            exploration_policy[-1].step(current_frames)
+            replay_buffer.extend(batch)
+
+            sample = replay_buffer.sample()
+            loss_vals = loss_module(sample)
+            for loss_name in ["loss_actor", "loss_value"]:
+                optimiser = optimiser_dict[loss_name]
+                optimiser.zero_grad()
+                loss = loss_vals[loss_name]
+                loss.backward()
+                optimiser.step()
+            # if (iteration) % 10 == 0:
+                target_updater.step()
+
+            if (iteration+1) % 100 == 0:
+                self._env_eval.reset()
+                tensordict_result = self._env_eval.rollout(max_steps=100, policy=loss_module.actor_network)
+                final_cost = tensordict_result[-1]['next']['cost']
+                print(final_cost)
+                # Snapshot.take(f'{self._cfg.model_path}/{self._cfg.name}/',self._statefull_components)

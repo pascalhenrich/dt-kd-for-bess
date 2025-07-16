@@ -8,8 +8,8 @@ class HydraConfig:
     model_path: str
     log_path: str
     generated_data_path: str
-    energy_dataset_path: str
-    price_dataset_path: str
-    checkpointing: bool
+    raw_data_path: str
+    use_pretrained: bool
     seed: int
     device: str
+    forecast_horizon: int

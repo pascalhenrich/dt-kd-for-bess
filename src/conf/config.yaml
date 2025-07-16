@@ -4,13 +4,13 @@ hydra:
   sweep:
     dir: ${output_path}/log/${name}
 
-name: test01
+name: firstRun
 output_path: output
 model_path: ${output_path}/model
 log_path: ${output_path}/log
 generated_data_path: ${output_path}/generated_data
-energy_dataset_path: data/1_processed/energy.csv
-price_dataset_path: data/1_processed/price.csv
-checkpointing: False
+raw_data_path: data/1_processed
+use_pretrained: False
+forecast_horizon: 12
 seed: 42
-device: cuda
+device: cpu
