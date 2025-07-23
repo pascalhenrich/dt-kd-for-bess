@@ -53,8 +53,8 @@ class DdpgAgent():
         )
         
         ou_module = OrnsteinUhlenbeckProcessModule(
-            annealing_num_steps=15_000,
-            n_steps_annealing=15_000,
+            # annealing_num_steps=15_000,
+            # n_steps_annealing=15_000,
             spec=action_spec,
         )
         
@@ -78,7 +78,7 @@ class DdpgAgent():
         collector = SyncDataCollector(
             create_env_fn=(make_env(cfg=self._cfg, datasets=[datasets[0]], device=self._DEVICE)),
             policy=exploration_policy,
-            frames_per_batch=25,
+            frames_per_batch=50,
             total_frames=1_000_000)
         
         replay_buffer = ReplayBuffer(

@@ -89,7 +89,7 @@ class BatteryScheduling(EnvBase):
 
         grid = prosumption + clipped_action
         
-        cost =  grid*price if grid>= 0 else grid*-0.1
+        cost =  grid*price if grid>= 0 else grid*0.1
         new_cost = old_cost + cost
         reward = -cost - penalty_soe
 
