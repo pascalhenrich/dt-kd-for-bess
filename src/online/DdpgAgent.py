@@ -7,7 +7,7 @@ from torchrl.collectors import SyncDataCollector
 from torchrl.data import LazyMemmapStorage, ReplayBuffer, RandomSampler
 from torchsnapshot import Snapshot, RNGState
 
-from offline.utils import make_env, make_dataset
+from online.utils import make_env, make_dataset
 from pathlib import Path
 
 class DdpgAgent():
@@ -78,13 +78,13 @@ class DdpgAgent():
         collector = SyncDataCollector(
             create_env_fn=(make_env(cfg=self._cfg, datasets=[datasets[0]], device=self._DEVICE)),
             policy=exploration_policy,
-            frames_per_batch=100,
+            frames_per_batch=25,
             total_frames=1_000_000)
         
         replay_buffer = ReplayBuffer(
             storage=LazyMemmapStorage(max_size=1_000_000),
             sampler=RandomSampler(),
-            batch_size=256)
+            batch_size=128)
 
         loss_module = DDPGLoss(
             actor_network=actor,
@@ -116,9 +116,9 @@ class DdpgAgent():
             'optimiser_dict': optimiser_dict,
         }
 
-        if self._cfg.use_pretrained and any(Path(f'{self._cfg.model_path}/{self._cfg.name}/').iterdir()):
-            snapshot = Snapshot(f'{self._cfg.model_path}/{self._cfg.name}/')
-            snapshot.restore(self._statefull_components)
+        # if self._cfg.use_pretrained and any(Path(f'{self._cfg.model_path}/{self._cfg.name}/').iterdir()):
+        #     snapshot = Snapshot(f'{self._cfg.model_path}/{self._cfg.name}/')
+        #     snapshot.restore(self._statefull_components)
 
     def train(self):
         loss_module = self._statefull_components['loss']
@@ -149,5 +149,6 @@ class DdpgAgent():
                 self._env_eval.reset()
                 tensordict_result = self._env_eval.rollout(max_steps=100, policy=loss_module.actor_network)
                 final_cost = tensordict_result[-1]['next']['cost']
+                print(tensordict_result['action'])
                 print(final_cost)
                 # Snapshot.take(f'{self._cfg.model_path}/{self._cfg.name}/',self._statefull_components)

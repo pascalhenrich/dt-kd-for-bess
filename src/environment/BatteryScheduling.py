@@ -47,7 +47,6 @@ class BatteryScheduling(EnvBase):
 
         if self._eval:
             self._data_pointer = 0
-            print(data['prosumption'][self._data_pointer])
             soe = torch.tensor(0.0)
             
         if  (self._data_pointer + 1 > (len(self._dataset)-96)):
@@ -92,7 +91,7 @@ class BatteryScheduling(EnvBase):
         
         cost =  grid*price if grid>= 0 else grid*-0.1
         new_cost = old_cost + cost
-        reward = -10*cost #- (1+penalty_soe)**2
+        reward = -cost - penalty_soe
 
         
         td_out = TensorDict(

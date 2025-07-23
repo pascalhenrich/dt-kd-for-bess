@@ -8,7 +8,7 @@ from torchrl.envs import (
 )
 import torch
 from environment.BatteryScheduling import BatteryScheduling
-from dataset.OfflineDataset import EnergyDataset
+from dataset.OnlineDataset import EnergyDataset
 
 
 def make_dataset(cfg, customer, modes):

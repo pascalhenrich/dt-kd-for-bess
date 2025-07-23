@@ -6,9 +6,9 @@ import shutil
 import hydra
 from hydra.core.config_store import ConfigStore
 from conf.config import HydraConfig
-from offline.DdpgAgent import DdpgAgent
-from dataset.OfflineDataset import EnergyDataset
-from offline.utils import make_env
+from online.DdpgAgent import DdpgAgent
+from dataset.OnlineDataset import EnergyDataset
+from online.utils import make_env
 
 
 @hydra.main(config_path="conf", config_name="config", version_base="1.3")
