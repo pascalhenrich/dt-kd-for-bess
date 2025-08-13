@@ -1,29 +1,31 @@
+
+import logging
 import torch
-from torch.optim import Adam
+from tensordict import TensorDict
 from tensordict.nn import TensorDictModule, TensorDictSequential
 from torchrl.modules import MLP, OrnsteinUhlenbeckProcessModule, TanhModule
-from torchrl.objectives import DQNLoss, ValueEstimators, SoftUpdate, DDPGLoss
+from torchrl.objectives import ValueEstimators, SoftUpdate, DDPGLoss
 from torchrl.collectors import SyncDataCollector
-from torchrl.data import LazyMemmapStorage, ReplayBuffer, RandomSampler
-from torchsnapshot import Snapshot, RNGState
+from torchrl.data import LazyTensorStorage, ReplayBuffer, RandomSampler
+from torchsnapshot import Snapshot
 
 from online.utils import make_env, make_dataset
-from pathlib import Path
 
 class DdpgAgent():
     def __init__(self, cfg, customer, device):
         self._cfg = cfg
         self._customer = customer
         self._DEVICE = device
+        self._log = logging.getLogger(__name__)
         
 
     def setup(self):
         datasets = make_dataset(cfg=self._cfg, customer=self._customer, modes=['train', 'eval', 'test'])
         envs =  make_env(cfg=self._cfg, datasets=datasets[1:3], device=self._DEVICE)
         self._env_eval = envs[0]
+        self._env_eval.base_env.eval()
         self._env_test = envs[1]
-        self._env_eval.evala()
-        self._env_test.evala()
+        self._env_eval.base_env.eval()
 
         action_spec = envs[0].action_spec
         observation_spec = envs[0].observation_spec['observation']
@@ -78,13 +80,13 @@ class DdpgAgent():
         collector = SyncDataCollector(
             create_env_fn=(make_env(cfg=self._cfg, datasets=[datasets[0]], device=self._DEVICE)),
             policy=exploration_policy,
-            frames_per_batch=50,
+            frames_per_batch=self._cfg.frames_per_batch,
             total_frames=1_000_000)
         
         replay_buffer = ReplayBuffer(
-            storage=LazyMemmapStorage(max_size=1_000_000),
+            storage=LazyTensorStorage(max_size=self._cfg.max_size),
             sampler=RandomSampler(),
-            batch_size=128)
+            batch_size=self._cfg.batch_size)
 
         loss_module = DDPGLoss(
             actor_network=actor,
@@ -116,9 +118,9 @@ class DdpgAgent():
             'optimiser_dict': optimiser_dict,
         }
 
-        # if self._cfg.use_pretrained and any(Path(f'{self._cfg.model_path}/{self._cfg.name}/').iterdir()):
-        #     snapshot = Snapshot(f'{self._cfg.model_path}/{self._cfg.name}/')
-        #     snapshot.restore(self._statefull_components)
+        if self._cfg.use_pretrained:
+            snapshot = Snapshot(f'../output/pretrained/{self._customer}')
+            snapshot.restore(self._statefull_components)
 
     def train(self):
         loss_module = self._statefull_components['loss']
@@ -127,6 +129,10 @@ class DdpgAgent():
         target_updater = self._non_statefull_components['target_updater']
         optimiser_dict = self._non_statefull_components['optimiser_dict']
         exploration_policy = collector.policy
+        best_iteration = TensorDict({
+                'iteration': 0,
+                'value': 10000000
+        })
 
         # Train
         for iteration, batch in enumerate(collector):
@@ -149,6 +155,24 @@ class DdpgAgent():
                 self._env_eval.reset()
                 tensordict_result = self._env_eval.rollout(max_steps=100, policy=loss_module.actor_network)
                 final_cost = tensordict_result[-1]['next']['cost']
-                print(tensordict_result['action'])
-                print(final_cost)
-                # Snapshot.take(f'{self._cfg.model_path}/{self._cfg.name}/',self._statefull_components)
+                if final_cost <= best_iteration['value']:
+                    best_iteration['iteration'] = iteration
+                    best_iteration['value'] = final_cost
+                    self._log.info(f'Iteration: {iteration}, final_cost: {final_cost}')
+                    # Snapshot.take(f'{self._cfg.output_path}/',self._statefull_components)
+            if iteration - best_iteration['iteration'] > 1000:
+                return best_iteration['value']
+            
+    def generate_data(self):
+        loss_module = self._statefull_components['loss']
+        dataset = make_dataset(cfg=self._cfg, customer=self._customer, modes=['eval'])
+        env =  make_env(cfg=self._cfg, datasets=dataset, device=self._DEVICE)
+        env.base_env.eval()
+        output = env.rollout(max_steps=100000, policy=loss_module.actor_network)
+        for i in range(1,51):
+            td = env.rollout(max_steps=100000, policy=loss_module.actor_network)
+            output = torch.cat([output,td])
+        print(output)
+        torch.save(output, f'../data/2_generated/{self._customer}.pt')
+        # print(output[48]['soe'])
+        # print(output[48]['next', 'soe'])

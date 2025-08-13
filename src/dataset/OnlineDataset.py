@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 
 class EnergyDataset(Dataset):
-    def __init__(self, raw_data_path: str, forecast_size: int, customer: int, mode: str):
+    def __init__(self, raw_data_path: str, sliding_window_size: int, sliding_window_offset: int, forecast_size: int, customer: int, mode: str):
 
         data = torch.load(f'{raw_data_path}/{customer}.pt', weights_only=False)
         data['price'] = torch.load(f'{raw_data_path}/price.pt', weights_only=False)
@@ -13,11 +13,21 @@ class EnergyDataset(Dataset):
         self._forecast_size = forecast_size
 
         if mode == 'train':
-            self._data = TensorDict(data[0:17568], batch_size=torch.Size([17568]))
+            selected_data = data[0:17568]
+            max_data = torch.tensor((17568-(sliding_window_size+forecast_size))/sliding_window_offset).int()
         elif mode == 'eval':
-            self._data = TensorDict(data[17568:35088], batch_size=torch.Size([17520]))
+            selected_data = data[17568:35088]
+            max_data = torch.tensor((17520-(sliding_window_size+forecast_size))/sliding_window_offset).int()
         elif mode == 'test':
-            self._data = TensorDict(data[35088:52608], batch_size=torch.Size([17520]))
+            selected_data = data[35088:52608]
+            max_data = torch.tensor((17520-(sliding_window_size+forecast_size))/sliding_window_offset).int()
+        
+        self._data = TensorDict({
+                'load': selected_data['load'].unfold(dimension=0,size=sliding_window_size+forecast_size,step=sliding_window_offset)[0:max_data],
+                'pv': selected_data['pv'].unfold(dimension=0,size=sliding_window_size+forecast_size,step=sliding_window_offset)[0:max_data],
+                'prosumption': selected_data['prosumption'].unfold(dimension=0,size=sliding_window_size+forecast_size,step=sliding_window_offset)[0:max_data],
+                'price': selected_data['price'].unfold(dimension=0,size=sliding_window_size+forecast_size,step=sliding_window_offset)[0:max_data]
+            }, batch_size=torch.Size([max_data, sliding_window_size+forecast_size]))
 
         self._batteryCapacity = self._calcBatteryCapacity(data[0:17568]['prosumption'])
      
@@ -25,7 +35,7 @@ class EnergyDataset(Dataset):
         return self._data.batch_size[0]
     
     def __getitem__(self, idx):
-        return self._data[idx:idx+self._forecast_size]
+        return self._data[idx]
     
     def _calcBatteryCapacity(self, tensor):
         daily_values = tensor.view(-1, 48)

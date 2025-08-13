@@ -3,11 +3,12 @@ import torch.nn as nn
 
 class DecisionTransformer(nn.Module):
     def __init__(self,
-                 state_dim=51,
+                 state_dim=65,
                  action_dim=1,
                  max_context_length=None,
-                 max_ep_length=48,                 
-                 model_dim=128
+                 max_ep_length=336,                 
+                 model_dim=128,
+                 device='cpu'
                  ):
         super().__init__()
         self.state_dim = state_dim
@@ -15,6 +16,7 @@ class DecisionTransformer(nn.Module):
         self.max_context_length = max_context_length
         self.max_ep_length = max_ep_length
         self.model_dim = model_dim
+        self.device = device
 
 
         self.embed_timestep = nn.Embedding(self.max_ep_length, self.model_dim)
@@ -54,10 +56,9 @@ class DecisionTransformer(nn.Module):
             (returns_embeddings, state_embeddings, action_embeddings), dim=1
         ).permute(0, 2, 1, 3).reshape(batch_size, 3*seq_length, self.model_dim)
         stacked_inputs = self.embed_ln(stacked_inputs)
+        dummy_memory = torch.zeros(size=(1, seq_length, self.model_dim), device=self.device)
 
-        dummy_memory = torch.zeros(1, seq_length, self.model_dim)
-
-        causal_mask = torch.triu(torch.full((3*seq_length, 3*seq_length), float('-inf')), diagonal=1)
+        causal_mask = torch.triu(torch.full((3*seq_length, 3*seq_length), float('-inf'), device=self.device), diagonal=1)
 
         stacked_padding_mask = torch.stack((padding_mask,padding_mask,padding_mask), dim=1).permute(0,2,1).reshape(batch_size,3*seq_length)
 
@@ -84,15 +85,15 @@ class DecisionTransformer(nn.Module):
             timesteps = timesteps[:,-self.max_context_length:]
 
             # pad all tokens to sequence length
-            padding_mask = torch.cat([torch.zeros(self.max_context_length-states.shape[1], dtype=torch.float32), 
-                                      torch.ones(states.shape[1],dtype=torch.long)]).reshape(1,-1)
-            states = torch.cat([torch.zeros((states.shape[0], self.max_context_length-states.shape[1], self.state_dim)), 
+            padding_mask = torch.cat([torch.zeros(self.max_context_length-states.shape[1], device=self.device, dtype=torch.float32), 
+                                      torch.ones(states.shape[1],dtype=torch.long, device=self.device)]).reshape(1,-1)
+            states = torch.cat([torch.zeros((states.shape[0], self.max_context_length-states.shape[1], self.state_dim), device=self.device), 
                                 states], dim=1)
-            actions = torch.cat([torch.zeros((actions.shape[0], self.max_context_length - actions.shape[1], self.action_dim)),
+            actions = torch.cat([torch.zeros((actions.shape[0], self.max_context_length - actions.shape[1], self.action_dim), device=self.device),
                                  actions], dim=1)
-            rtg = torch.cat([torch.zeros((rtg.shape[0], self.max_context_length-rtg.shape[1], 1)), 
+            rtg = torch.cat([torch.zeros((rtg.shape[0], self.max_context_length-rtg.shape[1], 1), device=self.device), 
                              rtg], dim=1)
-            timesteps = torch.cat([torch.zeros((timesteps.shape[0], self.max_context_length-timesteps.shape[1]), dtype=torch.long),
+            timesteps = torch.cat([torch.zeros((timesteps.shape[0], self.max_context_length-timesteps.shape[1]), dtype=torch.long, device=self.device),
                                    timesteps], dim=1)
         else:
             padding_mask = None

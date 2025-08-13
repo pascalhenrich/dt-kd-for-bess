@@ -4,7 +4,7 @@ from torchrl.data import Bounded, Unbounded, Composite
 from tensordict import TensorDict, TensorDictBase
 
 class BatteryScheduling(EnvBase):
-    def __init__(self, cfg, dataset, device):
+    def __init__(self, cfg, datasets, device):
         super().__init__(device=device)
         
         # Cfg
@@ -12,11 +12,11 @@ class BatteryScheduling(EnvBase):
         self._device = device
 
         # Dataset
-        self._dataset = dataset
+        self._datasets = datasets
+        self._ds_number = None
 
         # Environment parameters
         td = self._make_params()
-        self._data_pointer = torch.tensor(0, dtype=torch.int64)
 
         # Environment specs
         self._make_specs(td)
@@ -24,43 +24,44 @@ class BatteryScheduling(EnvBase):
         # Environment seed
         self.set_seed(cfg.seed)
 
-        self._eval = False
-
 
     def _set_seed(self, seed):
         rng = torch.manual_seed(seed)
         self.rng = rng
-        
-    def evala(self):
-        self._eval = True
+
 
     def _reset(self, td_in):
         if td_in is None or (len(td_in.keys())==1):
            td_in = self._make_params()
-           soe = torch.tensor(0.0)
         else:
             td_in['params'] = self._make_params()['params']
-            soe = td_in['soe']
+
+        # Use random dataset while training and always first day during eval/test
+        if self.training:
+            self._ds_number = torch.randint(low=0,high=len(self._datasets)-1,size=())
+            init_soe = torch.rand(())* td_in['params','battery_capacity']
+        else:
+            if self._ds_number is None:
+                self._ds_number = 0
+            else:
+                self._ds_number +=1
+            init_soe = torch.tensor(0.0)
+        self._current_dataset = self._datasets[self._ds_number]
 
         step = torch.tensor(0, dtype=torch.int64)
-        data = self._dataset[self._data_pointer]
-
-        if self._eval:
-            self._data_pointer = 0
-            soe = torch.tensor(0.0)
-            
-        if  (self._data_pointer + 1 > (len(self._dataset)-96)):
-            self._data_pointer = torch.tensor(0, dtype=torch.int64)
-            soe = torch.tensor(0.0)
+        prosumption = self._current_dataset['prosumption'][step]
+        prosumption_forecast = self._current_dataset['prosumption'][step:step+self._cfg.forecast_horizon-1]
+        price = self._current_dataset['price'][step]
+        price_forecast = self._current_dataset['price'][step:step+self._cfg.forecast_horizon-1]
 
         td_out = TensorDict(
             {
                 'step': step,
-                'soe': soe,
-                'prosumption': data['prosumption'][0],
-                'prosumption_forecast': data['prosumption'][1:],
-                'price': data['price'][0],
-                'price_forecast': data['price'][1:],
+                'soe': init_soe,
+                'prosumption': prosumption,
+                'prosumption_forecast': prosumption_forecast,
+                'price': price,
+                'price_forecast': price_forecast,
                 'cost': torch.tensor(0.0),
                 'params': td_in['params'],
             },
@@ -73,24 +74,21 @@ class BatteryScheduling(EnvBase):
         action = td_in['action'].squeeze(-1).detach()
         step = td_in['step'] + 1
         old_soe = td_in['soe']
-        old_cost = td_in['cost']
         params = td_in['params']
 
-        self._data_pointer += 1
-        data = self._dataset[self._data_pointer]
-        prosumption = data['prosumption'][0]
-        prosumption_forecast = data['prosumption'][1:]
-        price = data['price'][0]
-        price_forecast = data['price'][1:]
+        prosumption = self._current_dataset['prosumption'][step]
+        prosumption_forecast = self._current_dataset['prosumption'][step:step+self._cfg.forecast_horizon-1]
+        price = self._current_dataset['price'][step]
+        price_forecast = self._current_dataset['price'][step:step+self._cfg.forecast_horizon-1]
 
-        new_soe = torch.clip(old_soe + action, torch.tensor(0.0), params['battery_capacity'])
+        new_soe = torch.clip(old_soe + action, torch.tensor(0.0,device=self._cfg.device), params['battery_capacity'])
         clipped_action = new_soe - old_soe
         penalty_soe  = torch.abs(action - clipped_action)
 
         grid = prosumption + clipped_action
         
         cost =  grid*price if grid>= 0 else grid*0.1
-        new_cost = old_cost + cost
+        # penalty soe scale between 0 and 1
         reward = -cost - penalty_soe
 
         
@@ -102,24 +100,28 @@ class BatteryScheduling(EnvBase):
                 'prosumption_forecast': prosumption_forecast,
                 'price': price,
                 'price_forecast': price_forecast,
-                'cost': new_cost,
+                'cost': cost,
                 'params': params,
                 'reward': reward,
-                'done': ((step + 1) > 48) or (self._data_pointer + 1 > (len(self._dataset)-96)),
+                'done': ((step + 1) > params['max_steps']),
             },
             batch_size=td_in.shape,
             device=td_in.device,
         )
+        
         return td_out
     
+
     def _make_params(self):
+        battery_cap = self._datasets.getBatteryCapacity()
+        
         td_param = TensorDict(
             {
                 'params': TensorDict(
                     {
-                        'battery_capacity': self._dataset.getBatteryCapacity(),
-                        'max_power': self._dataset.getBatteryCapacity()/4,
-                        'max_steps': len(self._dataset)
+                        'battery_capacity': battery_cap,
+                        'max_power': battery_cap/4,
+                        'max_steps': torch.tensor(self._cfg.sliding_window_size)
                     },
                     batch_size=torch.Size([])
                 )
@@ -132,7 +134,7 @@ class BatteryScheduling(EnvBase):
     def _make_specs(self, td_param):
         self.observation_spec = Composite(
             step=Bounded(low=0,
-                         high=48,
+                         high= td_param['params', 'max_steps'],
                          shape=(),
                          dtype=torch.int64),
             soe=Bounded(low = 0,
