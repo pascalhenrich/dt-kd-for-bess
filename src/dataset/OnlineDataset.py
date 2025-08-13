@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 
 class EnergyDataset(Dataset):
-    def __init__(self, raw_data_path: str, sliding_window_size: int, sliding_window_offset: int, forecast_size: int, customer: int, mode: str):
+    def __init__(self, raw_data_path: str, sliding_window_size: int, sliding_window_offset: int, forecast_size: int, customer: int, mode: str, device):
 
         data = torch.load(f'{raw_data_path}/{customer}.pt', weights_only=False)
         data['price'] = torch.load(f'{raw_data_path}/price.pt', weights_only=False)
@@ -27,7 +27,9 @@ class EnergyDataset(Dataset):
                 'pv': selected_data['pv'].unfold(dimension=0,size=sliding_window_size+forecast_size,step=sliding_window_offset)[0:max_data],
                 'prosumption': selected_data['prosumption'].unfold(dimension=0,size=sliding_window_size+forecast_size,step=sliding_window_offset)[0:max_data],
                 'price': selected_data['price'].unfold(dimension=0,size=sliding_window_size+forecast_size,step=sliding_window_offset)[0:max_data]
-            }, batch_size=torch.Size([max_data, sliding_window_size+forecast_size]))
+            }, 
+            batch_size=torch.Size([max_data, sliding_window_size+forecast_size]),
+            device=device)
 
         self._batteryCapacity = self._calcBatteryCapacity(data[0:17568]['prosumption'])
      

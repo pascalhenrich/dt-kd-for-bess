@@ -1,0 +1,17 @@
+hydra:
+  run:
+    dir: ${output_path}
+
+defaults:
+  - comp: ddpg
+  - _self_
+
+name: run0
+output_path: ../output/${comp.name}/${name}
+model_path: ../model/
+raw_data_path: ../data/1_processed
+generated_data_path: ../data/2_generated
+
+customer: 13
+seed: 42
+device: cuda
