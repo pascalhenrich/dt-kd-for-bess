@@ -14,7 +14,7 @@ def make_dataset(cfg, modes, device):
                           sliding_window_size=cfg.comp.dataset.sliding_window_size,
                           sliding_window_offset=cfg.comp.dataset.sliding_window_offset,
                           forecast_size=cfg.comp.dataset.forecast_horizon,
-                          customer=cfg.customer, 
+                          customer=1, 
                           mode=mode,
                           device=device) for mode in modes]
      

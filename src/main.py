@@ -1,7 +1,7 @@
 import torch
 import hydra
 from hydra.core.config_store import ConfigStore
-from experiments.ddpg.conf.config import HydraConfig
+from conf.config import HydraConfig
 
 import logging
 logger = logging.getLogger(__name__)
@@ -38,8 +38,9 @@ def main(cfg: HydraConfig):
                 trainer.generate_data()
         case 'dt':
             trainer = DtTrainer(cfg=cfg, device=DEVICE)
-            trainer.setup()
+            # trainer.setup()
             trainer.train()
+            trainer.eval(torch.tensor([40.0],device=DEVICE))
     # 
 
     # trainer = OfflineTrainer(cfg=cfg, device=DEVICE)

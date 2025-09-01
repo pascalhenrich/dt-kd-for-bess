@@ -6,7 +6,7 @@ import numpy as np
 
 class OfflineDataset(Dataset):
     def __init__(self, cfg, device):
-        self._data = torch.load(f'{cfg.generated_data_path}/{cfg.customer}.pt', weights_only=False).to(device)
+        self._data = torch.load(f'{cfg.generated_data_path}/1.pt', weights_only=False).to(device)
         self._data = self.td_to_unfold_td(self._data)
         ctg = torch.flip(torch.cumsum(self._data['cost'],dim=1),dims=[1])
         self._data['ctg'] = ctg

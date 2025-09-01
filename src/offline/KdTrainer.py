@@ -4,11 +4,11 @@ from torchrl.envs.utils import check_env_specs, step_mdp
 from dataset.OfflineDataset import OfflineDataset
 from utils import make_dataset, make_env
 from offline.DecisionTransformer import DecisionTransformer
+from torchsnapshot import Snapshot
 
-
-class DtTrainer():
+class KdTrainer():
     def __init__(self, cfg, device):
-        self._model = DecisionTransformer(
+        self._teacher_model = DecisionTransformer(
             state_dim=65,
             action_dim=1,
             max_context_length=48,
@@ -16,6 +16,22 @@ class DtTrainer():
             model_dim=128,
             device=cfg.device
         ).to(device=device)
+
+        self._statefull_components = {
+            'teacher': self._teacher_model
+        }
+        
+        self._student_model = DecisionTransformer(
+            state_dim=65,
+            action_dim=1,
+            max_context_length=48,
+            max_ep_length=336,
+            model_dim=128,
+            device=cfg.device
+        ).to(device=device)
+
+        snapshot = Snapshot(f'{self.cfg.model_path}/{self._customer}')
+        snapshot.restore(self._statefull_components)
         
         self._cfg = cfg
         self._batch_size = 32

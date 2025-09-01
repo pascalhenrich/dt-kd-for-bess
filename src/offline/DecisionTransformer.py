@@ -56,12 +56,12 @@ class DecisionTransformer(nn.Module):
             (returns_embeddings, state_embeddings, action_embeddings), dim=1
         ).permute(0, 2, 1, 3).reshape(batch_size, 3*seq_length, self.model_dim)
         stacked_inputs = self.embed_ln(stacked_inputs)
-        dummy_memory = torch.zeros(size=(1, seq_length, self.model_dim), device=self.device)
+        dummy_memory = torch.zeros(size=(batch_size, seq_length, self.model_dim), device=self.device)
 
         causal_mask = torch.triu(torch.full((3*seq_length, 3*seq_length), float('-inf'), device=self.device), diagonal=1)
 
         stacked_padding_mask = torch.stack((padding_mask,padding_mask,padding_mask), dim=1).permute(0,2,1).reshape(batch_size,3*seq_length)
-
+        
         x = self.transformer(tgt=stacked_inputs,
                              memory=dummy_memory, 
                              tgt_mask=causal_mask,

@@ -1,2 +1,6 @@
-name: dt_train
+name: dt
 num_iterations: 100
+dataset:
+  sliding_window_size: 336
+  sliding_window_offset: 336
+  forecast_horizon: 32

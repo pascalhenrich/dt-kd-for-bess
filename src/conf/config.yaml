@@ -12,6 +12,6 @@ model_path: ../model/
 raw_data_path: ../data/1_processed
 generated_data_path: ../data/2_generated
 
-customer: 13
+customer: [109,157,13]
 seed: 42
 device: cuda
