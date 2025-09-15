@@ -26,15 +26,15 @@ def main(cfg: HydraConfig):
     torch.manual_seed(cfg.seed)
     logger.info(f'Seed: {cfg.seed} initialized!')
 
-    logger.info(f'Start pipeline {cfg.comp.name} for customer {cfg.customer}')
+    logger.info(f'Start pipeline {cfg.component.name} for customer {cfg.customer}')
 
-    match cfg.comp.name:
+    match cfg.component.name:
         case 'ddpg':
             trainer = DdpgTrainer(cfg=cfg, device=DEVICE)
             trainer.setup()
-            if cfg.comp.mode=='train':
+            if cfg.component.mode=='train':
                 trainer.train()
-            elif cfg.comp.mode=='generate':
+            elif cfg.component.mode=='generate':
                 trainer.generate_data()
         case 'dt':
             trainer = DtTrainer(cfg=cfg, device=DEVICE)

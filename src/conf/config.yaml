@@ -3,15 +3,16 @@ hydra:
     dir: ${output_path}
 
 defaults:
-  - comp: ddpg
+  - component: ddpg
   - _self_
 
 name: run0
-output_path: ../output/${comp.name}/${name}
-model_path: ../model/
+output_path: ../output/${component.name}/${name}
+model_path: ../model/${component.name}/${customer}/${name}
 raw_data_path: ../data/1_processed
 generated_data_path: ../data/2_generated
 
-customer: [109,157,13]
+# customer: [13,35,74,82,87]
+customer: 13
 seed: 42
 device: cuda

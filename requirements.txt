@@ -10,6 +10,9 @@ pandas
 hydra-core
 ipykernel
 matplotlib
+plotly
+nbformat
+kaleido
 gurobipy
 scikit-learn
 scipy

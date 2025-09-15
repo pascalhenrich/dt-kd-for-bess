@@ -43,16 +43,19 @@ class BatteryScheduling(EnvBase):
         else:
             if self.ds_number is None:
                 self.ds_number = 0
+                init_soe = torch.tensor(0.0, device=self.DEVICE)
             else:
+                
                 self.ds_number +=1
-            init_soe = torch.tensor(0.0, device=self.DEVICE)
+                init_soe = self.soe
+            
         self._current_dataset = self.datasets[self.ds_number]
 
         step = torch.tensor(0, dtype=torch.int64, device=self.DEVICE)
         prosumption = self._current_dataset['prosumption'][step]
-        prosumption_forecast = self._current_dataset['prosumption'][step:step+self.cfg.comp.dataset.forecast_horizon-1]
+        prosumption_forecast = self._current_dataset['prosumption'][step:step+self.cfg.component.dataset.forecast_horizon-1]
         price = self._current_dataset['price'][step]
-        price_forecast = self._current_dataset['price'][step:step+self.cfg.comp.dataset.forecast_horizon-1]
+        price_forecast = self._current_dataset['price'][step:step+self.cfg.component.dataset.forecast_horizon-1]
 
         td_out = TensorDict(
             {
@@ -77,9 +80,9 @@ class BatteryScheduling(EnvBase):
         params = td_in['params']
 
         prosumption = self._current_dataset['prosumption'][step]
-        prosumption_forecast = self._current_dataset['prosumption'][step:step+self.cfg.comp.dataset.forecast_horizon-1]
+        prosumption_forecast = self._current_dataset['prosumption'][step:step+self.cfg.component.dataset.forecast_horizon-1]
         price = self._current_dataset['price'][step]
-        price_forecast = self._current_dataset['price'][step:step+self.cfg.comp.dataset.forecast_horizon-1]
+        price_forecast = self._current_dataset['price'][step:step+self.cfg.component.dataset.forecast_horizon-1]
 
         new_soe = torch.clip(old_soe + action, torch.tensor(0.0, device=self.DEVICE), params['battery_capacity'])
         clipped_action = new_soe - old_soe
@@ -91,6 +94,7 @@ class BatteryScheduling(EnvBase):
         # penalty soe scale between 0 and 1
         reward = -cost - penalty_soe
 
+        self.soe = new_soe
         
         td_out = TensorDict(
             {
@@ -121,7 +125,7 @@ class BatteryScheduling(EnvBase):
                     {
                         'battery_capacity': battery_cap,
                         'max_power': battery_cap/4,
-                        'max_steps': torch.tensor(self.cfg.comp.dataset.sliding_window_size)
+                        'max_steps': torch.tensor(self.cfg.component.dataset.sliding_window_size)
                     },
                     batch_size=torch.Size([])
                 )
@@ -144,14 +148,14 @@ class BatteryScheduling(EnvBase):
             prosumption=Unbounded(dtype=torch.float32, 
                                   shape=()),
             prosumption_forecast=Unbounded(dtype=torch.float32, 
-                                            shape=(self.cfg.comp.dataset.forecast_horizon-1,)),
+                                            shape=(self.cfg.component.dataset.forecast_horizon-1,)),
             price=Unbounded(dtype=torch.float32,
                             shape=()),
             price_forecast=Unbounded(dtype=torch.float32, 
-                                     shape=(self.cfg.comp.dataset.forecast_horizon-1,)),
+                                     shape=(self.cfg.component.dataset.forecast_horizon-1,)),
             cost=Unbounded(dtype=torch.float32, 
                            shape=()),
-            params=self._make_composite_from_td(td_param['params']),
+            params=self._make_componentosite_from_td(td_param['params']),
             shape=torch.Size([])
         )
 
@@ -164,14 +168,14 @@ class BatteryScheduling(EnvBase):
         
         self.reward_spec = Unbounded(shape=(*td_param.shape, 1), dtype=torch.float32)
     
-    def _make_composite_from_td(self, td):
-        composite = Composite(
+    def _make_componentosite_from_td(self, td):
+        componentosite = Composite(
             {
-                key: self.make_composite_from_td(tensor)
+                key: self.make_componentosite_from_td(tensor)
                 if isinstance(tensor, TensorDictBase)
                 else Unbounded(dtype=tensor.dtype, device=tensor.device, shape=tensor.shape)
                 for key, tensor in td.items()
             },
             shape=td.shape
         )
-        return composite
+        return componentosite
