@@ -1,4 +1,5 @@
 name: dt
+mode: train
 num_iterations: 100
 dataset:
   sliding_window_size: 336

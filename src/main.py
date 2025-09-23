@@ -26,7 +26,7 @@ def main(cfg: HydraConfig):
     torch.manual_seed(cfg.seed)
     logger.info(f'Seed: {cfg.seed} initialized!')
 
-    logger.info(f'Start pipeline {cfg.component.name} for customer {cfg.customer}')
+    logger.info(f'Start pipeline {cfg.component.name} {cfg.component.mode} for customer {cfg.customer}')
 
     match cfg.component.name:
         case 'ddpg':
@@ -41,6 +41,8 @@ def main(cfg: HydraConfig):
             # trainer.setup()
             trainer.train()
             trainer.eval(torch.tensor([40.0],device=DEVICE))
+        case 'kd':
+            logger.info('KD component is not implemented yet.')
     # 
 
     # trainer = OfflineTrainer(cfg=cfg, device=DEVICE)

@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 import pandas as pd
 import numpy as np
 
-class EnergyDataset(Dataset):
+class OnlineDataset(Dataset):
     def __init__(self, raw_data_path: str, sliding_window_size: int, sliding_window_offset: int, forecast_size: int, customer: int, mode: str, device):
 
         data = torch.load(f'{raw_data_path}/{customer}.pt', weights_only=False)
@@ -12,16 +12,32 @@ class EnergyDataset(Dataset):
 
         self._forecast_size = forecast_size
 
-        if mode == 'train':
-            selected_data = data[0:17568]
-            max_data = torch.tensor((17568-(sliding_window_size+forecast_size))/sliding_window_offset).int()
-        elif mode == 'eval':
-            selected_data = data[17568:35088]
-            max_data = torch.tensor((17520-(sliding_window_size+forecast_size))/sliding_window_offset).int()
+        if sliding_window_size != sliding_window_offset:
+            overlap_correction = torch.max(torch.tensor(1, dtype=torch.int32), (torch.tensor(sliding_window_size/sliding_window_offset)).int() - 1)
+        else:
+            overlap_correction = 0
+
+        # 536 days for ddpg training (534 clean days)
+        if mode == 'train_ddpg':
+            selected_data = data[0:25728]
+            max_data = torch.tensor((25728-forecast_size)/sliding_window_offset).int() - overlap_correction
+        # 8 days for ddpg validation (7 clean days)
+        elif mode == 'val_ddpg':
+            selected_data = data[25728:26112]
+            max_data = torch.tensor((384-forecast_size)/sliding_window_offset).int() - overlap_correction
+        # 536 days for dt training (535 clean days)
+        elif mode == 'train_dt':
+            selected_data = data[26112:51840]
+            max_data = torch.tensor((25728-forecast_size)/sliding_window_offset).int() - overlap_correction
+        # 8 days for dt validation (7 clean days)
+        elif mode == 'val_dt':
+            selected_data = data[51840:52224]
+            max_data = torch.tensor((384-forecast_size)/sliding_window_offset).int() - overlap_correction
+        # 8 days for testing
         elif mode == 'test':
-            selected_data = data[35088:52608]
-            max_data = torch.tensor((17520-(sliding_window_size+forecast_size))/sliding_window_offset).int()
-        
+            selected_data = data[52224:52608]
+            max_data = torch.tensor((384-forecast_size)/sliding_window_offset).int() - overlap_correction
+
         self._data = TensorDict({
                 'load': selected_data['load'].unfold(dimension=0,size=sliding_window_size+forecast_size,step=sliding_window_offset)[0:max_data],
                 'pv': selected_data['pv'].unfold(dimension=0,size=sliding_window_size+forecast_size,step=sliding_window_offset)[0:max_data],
@@ -31,7 +47,7 @@ class EnergyDataset(Dataset):
             batch_size=torch.Size([max_data, sliding_window_size+forecast_size]),
             device=device)
 
-        self._batteryCapacity = self._calcBatteryCapacity(data[0:17568]['prosumption'])
+        self._batteryCapacity = self._calcBatteryCapacity(data[0:25728]['prosumption'])
      
     def __len__(self):
         return self._data.batch_size[0]

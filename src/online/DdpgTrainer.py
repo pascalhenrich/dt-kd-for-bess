@@ -20,8 +20,8 @@ class DdpgTrainer():
         
 
     def setup(self):
-        train_dataset = make_dataset(cfg=self.cfg, modes=['train'], device=self.DEVICE)
-        spec_env =  make_env(cfg=self.cfg, dataset=train_dataset[0], device=self.DEVICE)
+        train_dataset = make_dataset(cfg=self.cfg, mode='train_ddpg', device=self.DEVICE)
+        spec_env =  make_env(cfg=self.cfg, dataset=train_dataset, device=self.DEVICE)
         action_spec = spec_env.action_spec
         observation_spec = spec_env.observation_spec['observation']
     
@@ -74,7 +74,7 @@ class DdpgTrainer():
         )
         
         collector = SyncDataCollector(
-            create_env_fn=(make_env(cfg=self.cfg, dataset=train_dataset[0], device=self.DEVICE)),
+            create_env_fn=(make_env(cfg=self.cfg, dataset=train_dataset, device=self.DEVICE)),
             policy=exploration_policy,
             frames_per_batch=self.cfg.component.collector_frames_per_batch,
             total_frames=-1,
@@ -116,7 +116,7 @@ class DdpgTrainer():
         }
 
         if self.cfg.component.mode=='generate':
-            loss_module.load_state_dict(torch.load(f'{self.cfg.model_path}/{self.cfg.name}/{self.cfg.customer}/loss_module.pth'))
+            loss_module.load_state_dict(torch.load(f'{self.cfg.model_path}/loss_module.pth'))
 
     def train(self):
         logger.info('Start training DDPG agent')
@@ -159,9 +159,9 @@ class DdpgTrainer():
 
             if (iteration+1) % self.cfg.component.eval_interval == 0:
                 t_11 = time.perf_counter()
-                tensordict_result = self.eval_year(loss_module)
+                tensordict_result = self.val(loss_module)
                 final_cost = torch.sum(tensordict_result['next']['cost'], dim=0)
-                if final_cost <= best_iteration['value']:
+                if final_cost < best_iteration['value']:
                     best_iteration['iteration'] = iteration
                     best_iteration['value'] = final_cost
                     best_iteration['td'] = tensordict_result
@@ -186,25 +186,23 @@ class DdpgTrainer():
                 
                 return best_iteration['value']
             
-    def eval_year(self, loss_module):
+    def val(self, loss_module):
         with torch.no_grad():
-            eval_dataset = make_dataset(cfg=self.cfg, modes=['eval'], device=self.DEVICE)
-            eval_env =  make_env(cfg=self.cfg, dataset=eval_dataset[0], device=self.DEVICE)
-            eval_env.base_env.eval()
-            tensordict_result = eval_env.rollout(max_steps=100000, policy=loss_module.actor_network)
-            for i in range(1,362):
-                td = eval_env.rollout(max_steps=100000, policy=loss_module.actor_network)
-                tensordict_result = torch.cat([tensordict_result,td])
+            val_dataset = make_dataset(cfg=self.cfg, mode='val_ddpg', device=self.DEVICE)
+            print(val_dataset)
+            val_env =  make_env(cfg=self.cfg, dataset=val_dataset, device=self.DEVICE)
+            val_env.base_env.eval()
+            tensordict_result = val_env.rollout(max_steps=100000, policy=loss_module.actor_network)
+            print(tensordict_result)
             return tensordict_result
             
     def generate_data(self):
         loss_module = self._statefull_componentonents['loss']
-        dataset = make_dataset(cfg=self.cfg, customer=self._customer, modes=['eval'])
-        env =  make_env(cfg=self.cfg, datasets=dataset, device=self.DEVICE)
+        dataset = make_dataset(cfg=self.cfg, modes=['eval'], device=self.DEVICE)
+        env =  make_env(cfg=self.cfg, dataset=dataset[0], device=self.DEVICE)
         env.base_env.eval()
         output = env.rollout(max_steps=100000, policy=loss_module.actor_network)
         for i in range(1,51):
             td = env.rollout(max_steps=100000, policy=loss_module.actor_network)
             output = torch.cat([output,td])
-        print(output)
-        torch.save(output, f'../data/2_generated/{self._customer}.pt')
+        torch.save(output, f'../data/2_generated/{self.cfg.customer}.pt')

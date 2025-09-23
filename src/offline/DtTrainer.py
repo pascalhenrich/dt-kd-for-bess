@@ -88,7 +88,7 @@ class DtTrainer():
     def eval(self, target_return):
         self._model.eval()
         datasets = make_dataset(cfg=self._cfg, modes=['test'], device=self._device)
-        env =  make_env(cfg=self._cfg, datasets=datasets, device=self._device)
+        env =  make_env(cfg=self._cfg, dataset=datasets[0], device=self._device)
         env.to(device=self._device)
         env.base_env.eval()
         action_spec = env.base_env.action_spec.space

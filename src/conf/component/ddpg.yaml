@@ -1,8 +1,12 @@
 name: ddpg
 mode: train
-dataset:
-  sliding_window_size: 48
+train_dataset:
+  sliding_window_size: 96
   sliding_window_offset: 48
+  forecast_horizon: 32
+val_dataset:
+  sliding_window_size: 336
+  sliding_window_offset: 336
   forecast_horizon: 32
 policy:
   num_cells: [400,300]
