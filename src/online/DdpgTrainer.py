@@ -20,7 +20,7 @@ class DdpgTrainer():
         
 
     def setup(self):
-        train_dataset = make_dataset(cfg=self.cfg, mode='train_ddpg', device=self.DEVICE)
+        train_dataset = make_dataset(cfg=self.cfg, mode=self.cfg.component.mode, device=self.DEVICE)
         spec_env =  make_env(cfg=self.cfg, dataset=train_dataset, device=self.DEVICE)
         action_spec = spec_env.action_spec
         observation_spec = spec_env.observation_spec['observation']
@@ -115,7 +115,7 @@ class DdpgTrainer():
             'optimiser_dict': optimiser_dict,
         }
 
-        if self.cfg.component.mode=='generate':
+        if self.cfg.component.mode=='generate' or self.cfg.component.mode=='test':
             loss_module.load_state_dict(torch.load(f'{self.cfg.model_path}/loss_module.pth'))
 
     def train(self):
@@ -164,21 +164,19 @@ class DdpgTrainer():
                 if final_cost < best_iteration['value']:
                     best_iteration['iteration'] = iteration
                     best_iteration['value'] = final_cost
-                    best_iteration['td'] = tensordict_result
                     logger.info(f'Iteration: {iteration}, lowest cost: {final_cost.item()}')
                     os.makedirs(f'{self.cfg.model_path}/', exist_ok=True)
                     torch.save(loss_module.state_dict(), f'{self.cfg.model_path}/loss_module.pth')
                 t_12 = time.perf_counter()
                 eval_time += t_12 - t_11
 
-            if iteration - best_iteration['iteration'] > 1000:
+            if iteration - best_iteration['iteration'] > 2000:
                 t1 = time.perf_counter()
                 metrics = {
                     'loss_actor': loss_actor,
                     'loss_value': loss_value,
                     'best_iteration': best_iteration['iteration'],
                     'final_cost': best_iteration['value'],
-                    'td': best_iteration['td'],
                     'training_time': t1 - t0 - eval_time,
                 }
 
@@ -188,21 +186,28 @@ class DdpgTrainer():
             
     def val(self, loss_module):
         with torch.no_grad():
-            val_dataset = make_dataset(cfg=self.cfg, mode='val_ddpg', device=self.DEVICE)
-            print(val_dataset)
+            val_dataset = make_dataset(cfg=self.cfg, mode='val', device=self.DEVICE)
             val_env =  make_env(cfg=self.cfg, dataset=val_dataset, device=self.DEVICE)
             val_env.base_env.eval()
             tensordict_result = val_env.rollout(max_steps=100000, policy=loss_module.actor_network)
-            print(tensordict_result)
             return tensordict_result
             
     def generate_data(self):
         loss_module = self._statefull_componentonents['loss']
-        dataset = make_dataset(cfg=self.cfg, modes=['eval'], device=self.DEVICE)
-        env =  make_env(cfg=self.cfg, dataset=dataset[0], device=self.DEVICE)
+        generate_dataset = make_dataset(cfg=self.cfg, mode=self.cfg.component.mode, device=self.DEVICE)
+        weeks = len(generate_dataset)
+        env =  make_env(cfg=self.cfg, dataset=generate_dataset, device=self.DEVICE)
         env.base_env.eval()
         output = env.rollout(max_steps=100000, policy=loss_module.actor_network)
-        for i in range(1,51):
+        for i in range(1,weeks):
             td = env.rollout(max_steps=100000, policy=loss_module.actor_network)
             output = torch.cat([output,td])
-        torch.save(output, f'../data/2_generated/{self.cfg.customer}.pt')
+        torch.save(output, f'../data/2_generated/{self.cfg.building_id}.pt')
+
+    def test(self):
+        loss_module = self._statefull_componentonents['loss']
+        test_dataset = make_dataset(cfg=self.cfg, mode='test', device=self.DEVICE)
+        env =  make_env(cfg=self.cfg, dataset=test_dataset, device=self.DEVICE)
+        env.base_env.eval()
+        tensordict_result = env.rollout(max_steps=100000, policy=loss_module.actor_network)
+        logger.info(f'Test set results: {torch.sum(tensordict_result['next']['cost'], dim=0).item()}')

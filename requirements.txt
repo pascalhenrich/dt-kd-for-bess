@@ -2,7 +2,7 @@ torch
 torchvision
 torchaudio
 torchrl
-torchsnapshot
+torchinfo
 tqdm
 numpy
 omegaconf

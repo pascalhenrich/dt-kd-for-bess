@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 from online.DdpgTrainer import DdpgTrainer
 from offline.DtTrainer import DtTrainer
+from offline.KdTrainer import KdTrainer
 
 
 
@@ -26,28 +27,28 @@ def main(cfg: HydraConfig):
     torch.manual_seed(cfg.seed)
     logger.info(f'Seed: {cfg.seed} initialized!')
 
-    logger.info(f'Start pipeline {cfg.component.name} {cfg.component.mode} for customer {cfg.customer}')
+    logger.info(f'Start pipeline {cfg.component.name} {cfg.component.mode} for building id {cfg.building_id}')
 
     match cfg.component.name:
         case 'ddpg':
             trainer = DdpgTrainer(cfg=cfg, device=DEVICE)
             trainer.setup()
-            if cfg.component.mode=='train':
+            if cfg.component.mode=='train_full' or cfg.component.mode=='train_half':
                 trainer.train()
             elif cfg.component.mode=='generate':
                 trainer.generate_data()
+            elif cfg.component.mode=='test':
+                trainer.test()
         case 'dt':
             trainer = DtTrainer(cfg=cfg, device=DEVICE)
-            # trainer.setup()
-            trainer.train()
-            trainer.eval(torch.tensor([40.0],device=DEVICE))
+            trainer.setup()
+            if cfg.component.mode=='train':
+                trainer.train()
         case 'kd':
-            logger.info('KD component is not implemented yet.')
-    # 
-
-    # trainer = OfflineTrainer(cfg=cfg, device=DEVICE)
-    # # trainer.train()
-    # trainer.eval(target_return=torch.tensor([20.0],device=DEVICE))
+            trainer = KdTrainer(cfg=cfg, device=DEVICE)
+            trainer.setup()
+            if cfg.component.mode=='train':
+                trainer.train()
 
 
 

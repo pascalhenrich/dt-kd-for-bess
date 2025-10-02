@@ -4,99 +4,125 @@ from torchrl.envs.utils import check_env_specs, step_mdp
 from dataset.OfflineDataset import OfflineDataset
 from utils import make_dataset, make_env
 from offline.DecisionTransformer import DecisionTransformer
-from torchsnapshot import Snapshot
+from torchinfo import summary
+import logging
+logger = logging.getLogger(__name__)
 
 class KdTrainer():
     def __init__(self, cfg, device):
-        self._teacher_model = DecisionTransformer(
-            state_dim=65,
-            action_dim=1,
-            max_context_length=48,
-            max_ep_length=336,
-            model_dim=128,
-            device=cfg.device
-        ).to(device=device)
+        self.cfg = cfg
+        self.DEVICE = device
 
-        self._statefull_components = {
-            'teacher': self._teacher_model
-        }
-        
-        self._student_model = DecisionTransformer(
-            state_dim=65,
-            action_dim=1,
-            max_context_length=48,
-            max_ep_length=336,
-            model_dim=128,
-            device=cfg.device
-        ).to(device=device)
+    def setup(self):
+        self.train_dataset = OfflineDataset(self.cfg.generated_data_path, self.cfg.component.dataset.sliding_window_size, self.cfg.component.dataset.sliding_window_offset, self.cfg.building_id, self.DEVICE)
+        self.state_dim = self.train_dataset[0]['observation'].shape[-1]
+        self.action_dim = self.train_dataset[0]['action'].shape[-1]
+        self.max_ep_len = len(self.train_dataset[0])
 
-        snapshot = Snapshot(f'{self.cfg.model_path}/{self._customer}')
-        snapshot.restore(self._statefull_components)
-        
-        self._cfg = cfg
-        self._batch_size = 32
-        self._max_context_length = 48
-        self._observation_size = 65
-        self._device = device
-        self._dataset = OfflineDataset(cfg, device)
-        self. optimizer = torch.optim.AdamW(
-                self._model.parameters(),
-                lr=1e-4,
-                weight_decay=1e-4,
-            )
-        self.criterion = torch.nn.MSELoss()
+        self.teacher_model = DecisionTransformer(
+            cfg=self.cfg,
+            state_dim=self.state_dim,
+            action_dim=self.action_dim,
+            max_context_length=self.cfg.component.max_context_length,
+            max_ep_length=self.max_ep_len,
+            model_dim=self.cfg.component.teacher.model_dim,
+            num_heads=self.cfg.component.teacher.transformer.num_heads,
+            num_layers=self.cfg.component.teacher.transformer.num_layers,
+            device=self.DEVICE,
+        ).to(device=self.DEVICE)
+
+        self.teacher_model.load_state_dict(torch.load(f'../model/dt/train/13/local/transformer.pth'))
+
+        self.student_model = DecisionTransformer(
+            cfg=self.cfg,
+            state_dim=self.state_dim,
+            action_dim=self.action_dim,
+            max_context_length=self.cfg.component.max_context_length,
+            max_ep_length=self.max_ep_len,
+            model_dim=self.cfg.component.model_dim,
+            num_heads=self.cfg.component.student.transformer.num_heads,
+            num_layers=self.cfg.component.student.transformer.num_layers,
+            device=self.DEVICE,
+        ).to(device=self.DEVICE)
+
+        self.optimizer = torch.optim.Adam(
+            self.student_model.parameters(),
+            lr=self.cfg.component.optimizer.lr)
+        self.criterion = torch.nn.CrossEntropyLoss()
+
+        self.temp = self.cfg.component.temp
+        self.soft_target_loss_weight = self.cfg.component.soft_target_loss_weight
+        self.ce_loss_weight = self.cfg.component.ce_loss_weight
         
 
     def get_batch(self):
-        traj_index = torch.randint(low=0,high=len(self._dataset)-1,size=(self._batch_size,), device=self._device)
-        states = torch.empty((self._batch_size, self._max_context_length, self._observation_size), device=self._device)
-        actions = torch.empty((self._batch_size, self._max_context_length, 1), device=self._device)
-        rtgs = torch.empty((self._batch_size, self._max_context_length, 1), device=self._device)
-        timesteps = torch.empty((self._batch_size, self._max_context_length,), dtype=torch.int32, device=self._device)
-        masks  = torch.empty((self._batch_size, self._max_context_length,), device=self._device)
-        trajectory = self._dataset[traj_index]
+        traj_index = torch.randint(low=0,high=len(self.train_dataset)-1,size=(self.cfg.component.batch_size,), device=self.DEVICE)
+        states = torch.empty((self.cfg.component.batch_size, self.cfg.component.max_context_length, self.state_dim), device=self.DEVICE)
+        actions = torch.empty((self.cfg.component.batch_size, self.cfg.component.max_context_length, self.action_dim), device=self.DEVICE)
+        rtgs = torch.empty((self.cfg.component.batch_size, self.cfg.component.max_context_length, 1), device=self.DEVICE)
+        timesteps = torch.empty((self.cfg.component.batch_size, self.cfg.component.max_context_length,), dtype=torch.int32, device=self.DEVICE)
+        masks  = torch.empty((self.cfg.component.batch_size, self.cfg.component.max_context_length,), device=self.DEVICE)
+        trajectory = self.train_dataset[traj_index]
         trajectory_len = trajectory.shape[1]
 
-        for i in range(self._batch_size):
-            traj_slice = torch.randint(low=0,high=trajectory_len-1,size=(), device=self._device)
+        for i in range(self.cfg.component.batch_size):
+            traj_slice = torch.randint(low=0,high=trajectory_len-1,size=(), device=self.DEVICE)
             #  Get data
-            state = trajectory[i]['observation'][traj_slice:traj_slice+self._max_context_length]
-            action = trajectory[i]['action'][traj_slice:traj_slice+self._max_context_length]
-            rtg = trajectory[i]['ctg'][traj_slice:traj_slice+self._max_context_length]
-            timestep = trajectory[i]['step'][traj_slice:traj_slice+self._max_context_length].squeeze(-1)
+            state = trajectory[i]['observation'][traj_slice:traj_slice+self.cfg.component.max_context_length]
+            action = trajectory[i]['action'][traj_slice:traj_slice+self.cfg.component.max_context_length]
+            rtg = trajectory[i]['ctg'][traj_slice:traj_slice+self.cfg.component.max_context_length]
+            timestep = trajectory[i]['step'][traj_slice:traj_slice+self.cfg.component.max_context_length].squeeze(-1)
             
             # Add padding
             tlen = state.shape[0]
-            states[i] = torch.cat([torch.zeros(size=(self._max_context_length - tlen, self._observation_size), device=self._device), state])
-            actions[i] = torch.cat([torch.zeros(size=(self._max_context_length - tlen, 1), device=self._device), action])
-            rtgs[i] = torch.cat([torch.zeros(size=(self._max_context_length - tlen, 1), device=self._device), rtg])
-            timesteps[i] = torch.cat([torch.zeros(size=(self._max_context_length - tlen,),  dtype=torch.int32, device=self._device), timestep])
+            states[i] = torch.cat([torch.zeros(size=(self.cfg.component.max_context_length - tlen, self.state_dim), device=self.DEVICE), state])
+            actions[i] = torch.cat([torch.ones(size=(self.cfg.component.max_context_length - tlen, 1), device=self.DEVICE) *-50.0, action])
+            rtgs[i] = torch.cat([torch.zeros(size=(self.cfg.component.max_context_length - tlen, 1), device=self.DEVICE), rtg])
+            timesteps[i] = torch.cat([torch.zeros(size=(self.cfg.component.max_context_length - tlen,),  dtype=torch.int32, device=self.DEVICE), timestep])
 
-            masks[i] = torch.cat([torch.zeros(size=(self._max_context_length - tlen,), device=self._device), torch.ones(size=(tlen,), device=self._device)])
+            masks[i] = torch.cat([torch.zeros(size=(self.cfg.component.max_context_length - tlen,), device=self.DEVICE), torch.ones(size=(tlen,), device=self.DEVICE)])
         return states, actions, rtgs, timesteps, masks
 
 
 
 
     def train(self):
-        self._model.train()
-        for _ in range(1000):
+        logger.info('Start training KD')
+        for iteration in range(self.cfg.component.num_iterations):
+
             states, actions, rtg, timesteps, mask = self.get_batch()
             action_target = torch.clone(actions)
-
-            action_preds = self._model.forward(states=states,
-                                actions=actions,
-                                returns_to_go=rtg,
-                                timesteps=timesteps,
-                                padding_mask=mask)
-            action_preds = action_preds.reshape(-1,1)[mask.reshape(-1) > 0]
             action_target = action_target.reshape(-1,1)[mask.reshape(-1) > 0]
 
-            
-            loss = self.criterion(action_preds, action_target)
             self.optimizer.zero_grad()
+
+            with torch.no_grad():
+                teacher_action_preds = self.teacher_model.forward(states=states,
+                                    actions=actions,
+                                    returns_to_go=rtg,
+                                    timesteps=timesteps,
+                                    padding_mask=mask)
+            teacher_action_preds = teacher_action_preds.reshape(-1,1)[mask.reshape(-1) > 0]
+           
+            student_action_preds = self.student_model.forward(states=states,
+                                                            actions=actions,
+                                                            returns_to_go=rtg,
+                                                            timesteps=timesteps,
+                                                            padding_mask=mask)
+            student_action_preds = student_action_preds.reshape(-1,1)[mask.reshape(-1) > 0]
+
+
+
+            soft_targets = torch.nn.functional.softmax(teacher_action_preds / self.temp, dim=-1)
+            soft_prob = torch.nn.functional.log_softmax(student_action_preds / self.temp, dim=-1)
+
+            soft_targets_loss = torch.sum(soft_targets * (soft_targets.log() - soft_prob)) / soft_prob.size()[0] * (self.temp**2)
+
+            label_loss = self.criterion(student_action_preds, action_target)
+
+            loss = self.soft_target_loss_weight * soft_targets_loss + self.ce_loss_weight * label_loss
+
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(self._model.parameters(), .25)
             self.optimizer.step()
 
             print(loss)

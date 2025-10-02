@@ -43,18 +43,17 @@ class BatteryScheduling(EnvBase):
         else:
             if self.ds_number is None:
                 self.ds_number = 0
-                init_soe = torch.tensor(0.0, device=self.DEVICE)
             else:
                 self.ds_number +=1
-                init_soe = self.soe
+            init_soe = torch.tensor(0.0, device=self.DEVICE)
             
         self._current_dataset = self.datasets[self.ds_number]
 
         step = torch.tensor(0, dtype=torch.int64, device=self.DEVICE)
         prosumption = self._current_dataset['prosumption'][step]
-        prosumption_forecast = self._current_dataset['prosumption'][step:step+self.cfg.component.train_dataset.forecast_horizon-1]
+        prosumption_forecast = self._current_dataset['prosumption'][step:step+self.cfg.component.dataset.forecast_horizon-1]
         price = self._current_dataset['price'][step]
-        price_forecast = self._current_dataset['price'][step:step+self.cfg.component.train_dataset.forecast_horizon-1]
+        price_forecast = self._current_dataset['price'][step:step+self.cfg.component.dataset.forecast_horizon-1]
 
         td_out = TensorDict(
             {
@@ -79,9 +78,9 @@ class BatteryScheduling(EnvBase):
         params = td_in['params']
 
         prosumption = self._current_dataset['prosumption'][step]
-        prosumption_forecast = self._current_dataset['prosumption'][step:step+self.cfg.component.train_dataset.forecast_horizon-1]
+        prosumption_forecast = self._current_dataset['prosumption'][step:step+self.cfg.component.dataset.forecast_horizon-1]
         price = self._current_dataset['price'][step]
-        price_forecast = self._current_dataset['price'][step:step+self.cfg.component.train_dataset.forecast_horizon-1]
+        price_forecast = self._current_dataset['price'][step:step+self.cfg.component.dataset.forecast_horizon-1]
 
         new_soe = torch.clip(old_soe + action, torch.tensor(0.0, device=self.DEVICE), params['battery_capacity'])
         clipped_action = new_soe - old_soe
@@ -90,10 +89,7 @@ class BatteryScheduling(EnvBase):
         grid = prosumption + clipped_action
         
         cost =  grid*price if grid>= 0 else grid*0.1
-        # penalty soe scale between 0 and 1
         reward = -cost - penalty_soe
-
-        self.soe = new_soe
         
         td_out = TensorDict(
             {
@@ -117,7 +113,7 @@ class BatteryScheduling(EnvBase):
 
     def _make_params(self):
         battery_cap = self.datasets.getBatteryCapacity()
-        max_steps = self.datasets[0].shape[0]-self.cfg.component.train_dataset.forecast_horizon
+        max_steps = self.datasets[0].shape[0]-self.cfg.component.dataset.forecast_horizon
         td_param = TensorDict(
             {
                 'params': TensorDict(
@@ -147,11 +143,11 @@ class BatteryScheduling(EnvBase):
             prosumption=Unbounded(dtype=torch.float32, 
                                   shape=()),
             prosumption_forecast=Unbounded(dtype=torch.float32, 
-                                            shape=(self.cfg.component.train_dataset.forecast_horizon-1,)),
+                                            shape=(self.cfg.component.dataset.forecast_horizon-1,)),
             price=Unbounded(dtype=torch.float32,
                             shape=()),
             price_forecast=Unbounded(dtype=torch.float32, 
-                                     shape=(self.cfg.component.train_dataset.forecast_horizon-1,)),
+                                     shape=(self.cfg.component.dataset.forecast_horizon-1,)),
             cost=Unbounded(dtype=torch.float32, 
                            shape=()),
             params=self._make_componentosite_from_td(td_param['params']),

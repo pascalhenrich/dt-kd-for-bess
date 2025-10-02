@@ -1,21 +1,17 @@
 name: ddpg
-mode: train
-train_dataset:
+mode: train_full
+dataset:
   sliding_window_size: 96
   sliding_window_offset: 48
-  forecast_horizon: 32
-val_dataset:
-  sliding_window_size: 336
-  sliding_window_offset: 336
   forecast_horizon: 32
 policy:
   num_cells: [400,300]
 ou:
-  annealing_num_steps: 1000
-  n_steps_annealing: 1000
+  annealing_num_steps: 1000000
+  n_steps_annealing: 1000000
 critic:
   num_cells: [400,300]
-collector_frames_per_batch: 400
+collector_frames_per_batch: 100
 replay_buffer_size: 100000
 batch_size: 128
 delay_actor: False
@@ -25,4 +21,4 @@ tau: 0.005
 lr:
   actor: 1e-4
   value: 1e-3
-eval_interval: 100
+eval_interval: 10

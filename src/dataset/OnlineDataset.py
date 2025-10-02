@@ -5,9 +5,9 @@ import pandas as pd
 import numpy as np
 
 class OnlineDataset(Dataset):
-    def __init__(self, raw_data_path: str, sliding_window_size: int, sliding_window_offset: int, forecast_size: int, customer: int, mode: str, device):
+    def __init__(self, raw_data_path: str, sliding_window_size: int, sliding_window_offset: int, forecast_size: int, building_id: int, mode: str, device):
 
-        data = torch.load(f'{raw_data_path}/{customer}.pt', weights_only=False)
+        data = torch.load(f'{raw_data_path}/{building_id}.pt', weights_only=False)
         data['price'] = torch.load(f'{raw_data_path}/price.pt', weights_only=False)
 
         self._forecast_size = forecast_size
@@ -17,27 +17,27 @@ class OnlineDataset(Dataset):
         else:
             overlap_correction = 0
 
-        # 536 days for ddpg training (534 clean days)
-        if mode == 'train_ddpg':
-            selected_data = data[0:25728]
-            max_data = torch.tensor((25728-forecast_size)/sliding_window_offset).int() - overlap_correction
-        # 8 days for ddpg validation (7 clean days)
-        elif mode == 'val_ddpg':
-            selected_data = data[25728:26112]
-            max_data = torch.tensor((384-forecast_size)/sliding_window_offset).int() - overlap_correction
-        # 536 days for dt training (535 clean days)
-        elif mode == 'train_dt':
-            selected_data = data[26112:51840]
-            max_data = torch.tensor((25728-forecast_size)/sliding_window_offset).int() - overlap_correction
-        # 8 days for dt validation (7 clean days)
-        elif mode == 'val_dt':
-            selected_data = data[51840:52224]
-            max_data = torch.tensor((384-forecast_size)/sliding_window_offset).int() - overlap_correction
-        # 8 days for testing
+        # 1038 days for ddpg training (1037 clean days)
+        if mode == 'train_full':
+            selected_data = data[0:49824]
+            max_data = torch.tensor((49824-forecast_size)/sliding_window_offset).int() - overlap_correction
+        # 519 days for ddpg training (518 clean days)
+        if mode == 'train_half':
+            selected_data = data[0:24912]
+            max_data = torch.tensor((24912-forecast_size)/sliding_window_offset).int() - overlap_correction
+        # 519 days for dt training (518 clean days)
+        elif mode == 'generate':
+            selected_data = data[24912:49824]
+            max_data = torch.tensor((24912-forecast_size)/sliding_window_offset).int() - overlap_correction
+        # 29 days for validation (28 clean days)
+        elif mode == 'val':
+            selected_data = data[49824:51216]
+            max_data = torch.tensor((1392-forecast_size)/sliding_window_offset).int() - overlap_correction
+        # 29 days for testing (28 clean days)
         elif mode == 'test':
-            selected_data = data[52224:52608]
-            max_data = torch.tensor((384-forecast_size)/sliding_window_offset).int() - overlap_correction
-
+            selected_data = data[51216:52608]
+            max_data = torch.tensor((1392-forecast_size)/sliding_window_offset).int() - overlap_correction       
+            
         self._data = TensorDict({
                 'load': selected_data['load'].unfold(dimension=0,size=sliding_window_size+forecast_size,step=sliding_window_offset)[0:max_data],
                 'pv': selected_data['pv'].unfold(dimension=0,size=sliding_window_size+forecast_size,step=sliding_window_offset)[0:max_data],
@@ -47,7 +47,7 @@ class OnlineDataset(Dataset):
             batch_size=torch.Size([max_data, sliding_window_size+forecast_size]),
             device=device)
 
-        self._batteryCapacity = self._calcBatteryCapacity(data[0:25728]['prosumption'])
+        self._batteryCapacity = self._calcBatteryCapacity(data[0:49824]['prosumption'])
      
     def __len__(self):
         return self._data.batch_size[0]

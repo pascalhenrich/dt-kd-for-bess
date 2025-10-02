@@ -1,12 +1,12 @@
 #!/bin/sh
-#SBATCH --job-name=run0
+#SBATCH --job-name=run2
 #SBATCH --partition=cpu
 #SBATCH --array=0-728
-#SBATCH --time=10:00:00
+#SBATCH --time=2:00:00
 #SBATCH --mail-user=upsws@student.kit.edu
 #SBATCH --mail-type=FAIL
-#SBATCH --output=output/ddpg/13/%x_%a/stdout.out
-#SBATCH --error=output/ddpg/13/%x_%a/stderr.err
+#SBATCH --output=output/ddpg/87/%x_%a/stdout.out
+#SBATCH --error=output/ddpg/87/%x_%a/stderr.err
 
 
 module load devel/python/3.13.3-gnu-14.2
@@ -71,7 +71,7 @@ FULL_JOB_NAME=${SLURM_JOB_NAME}_${SLURM_ARRAY_TASK_ID}
 
 python main.py \
   name="$FULL_JOB_NAME" \
-  customer=13 \
+  customer=87 \
   component.dataset.forecast_horizon="$fh" \
   component.batch_size="$bs" \
   component.collector_frames_per_batch="$fp" \

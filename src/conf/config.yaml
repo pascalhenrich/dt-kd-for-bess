@@ -6,12 +6,12 @@ defaults:
   - component: ddpg
   - _self_
 
-name: run0
-output_path: ../output/${component.name}/${customer}/${name}
-model_path: ../model/${component.name}/${customer}/${name}
+name: 
+output_path: ../output/${component.name}/${component.mode}/${building_id}/${name}
+model_path: ../model/${component.name}/${component.mode}/${building_id}/${name}
 raw_data_path: ../data/1_processed
 generated_data_path: ../data/2_generated
 
-customer: 13
+building_id: 13
 seed: 42
 device: cpu

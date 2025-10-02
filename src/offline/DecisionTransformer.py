@@ -2,20 +2,16 @@ import torch
 import torch.nn as nn
 
 class DecisionTransformer(nn.Module):
-    def __init__(self,
-                 state_dim=65,
-                 action_dim=1,
-                 max_context_length=None,
-                 max_ep_length=336,                 
-                 model_dim=128,
-                 device='cpu'
-                 ):
+    def __init__(self, cfg, state_dim, action_dim, max_context_length, max_ep_length, model_dim, num_heads, num_layers, device):
         super().__init__()
+        self.cfg = cfg
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.max_context_length = max_context_length
         self.max_ep_length = max_ep_length
         self.model_dim = model_dim
+        self.num_heads = num_heads
+        self.num_layers = num_layers
         self.device = device
 
 
@@ -31,10 +27,10 @@ class DecisionTransformer(nn.Module):
         )
         decoder_layer = nn.TransformerDecoderLayer(
             d_model=self.model_dim,
-            nhead=8,
+            nhead=self.num_heads,
             batch_first=True,
         )
-        self.transformer = nn.TransformerDecoder(decoder_layer=decoder_layer, num_layers=6)
+        self.transformer = nn.TransformerDecoder(decoder_layer=decoder_layer, num_layers=self.num_layers)
 
     def forward(self, states, actions, returns_to_go, timesteps, padding_mask=None):
         batch_size, seq_length = states.shape[0], states.shape[1]
@@ -68,7 +64,7 @@ class DecisionTransformer(nn.Module):
                              tgt_key_padding_mask=stacked_padding_mask)
         x = x.reshape(batch_size, seq_length, 3, self.model_dim).permute(0, 2, 1, 3)
 
-        return self.predict_action(x[:,1])
+        return self.predict_action(x[:,1])*0.75
 
     def get_action(self, states, actions, rtg, timesteps):
 
