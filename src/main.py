@@ -1,4 +1,5 @@
 import torch
+from tensordict import TensorDict
 import hydra
 from hydra.core.config_store import ConfigStore
 from conf.config import HydraConfig
@@ -34,16 +35,25 @@ def main(cfg: HydraConfig):
             trainer = DdpgTrainer(cfg=cfg, device=DEVICE)
             trainer.setup()
             if cfg.component.mode=='train_full' or cfg.component.mode=='train_half':
-                trainer.train()
+                val = trainer.train()
+                test = trainer.test()
+                metrics = TensorDict({
+                    'val': val,
+                    'test': test
+                })
+                torch.save(metrics, f'{cfg.output_path}/metrics.pt')
             elif cfg.component.mode=='generate':
-                trainer.generate_data()
-            elif cfg.component.mode=='test':
-                trainer.test()
+                trainer.generate_data()      
         case 'dt':
             trainer = DtTrainer(cfg=cfg, device=DEVICE)
             trainer.setup()
-            if cfg.component.mode=='train':
-                trainer.train()
+            val = trainer.train()
+            test = trainer.test(torch.tensor(cfg.component.target_return.test, device=DEVICE))
+            metrics = TensorDict({
+                'val': val,
+                'test': test
+            })
+            torch.save(metrics, f'{cfg.output_path}/metrics.pt')
         case 'kd':
             trainer = KdTrainer(cfg=cfg, device=DEVICE)
             trainer.setup()

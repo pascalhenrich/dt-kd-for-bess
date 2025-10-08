@@ -19,10 +19,15 @@ class KdTrainer():
         self.action_dim = self.train_dataset[0]['action'].shape[-1]
         self.max_ep_len = len(self.train_dataset[0])
 
+        spec_dataset = make_dataset(cfg=self.cfg, mode='train_half', device=self.DEVICE)
+        spec_env =  make_env(cfg=self.cfg, dataset=spec_dataset, device=self.DEVICE)
+        action_spec = spec_env.action_spec
+        self.action_dim = action_spec.shape[0]
+
         self.teacher_model = DecisionTransformer(
             cfg=self.cfg,
             state_dim=self.state_dim,
-            action_dim=self.action_dim,
+            action_spec=action_spec,
             max_context_length=self.cfg.component.max_context_length,
             max_ep_length=self.max_ep_len,
             model_dim=self.cfg.component.teacher.model_dim,
@@ -36,10 +41,10 @@ class KdTrainer():
         self.student_model = DecisionTransformer(
             cfg=self.cfg,
             state_dim=self.state_dim,
-            action_dim=self.action_dim,
+            action_spec=action_spec,
             max_context_length=self.cfg.component.max_context_length,
             max_ep_length=self.max_ep_len,
-            model_dim=self.cfg.component.model_dim,
+            model_dim=self.cfg.component.student.model_dim,
             num_heads=self.cfg.component.student.transformer.num_heads,
             num_layers=self.cfg.component.student.transformer.num_layers,
             device=self.DEVICE,
@@ -48,11 +53,8 @@ class KdTrainer():
         self.optimizer = torch.optim.Adam(
             self.student_model.parameters(),
             lr=self.cfg.component.optimizer.lr)
-        self.criterion = torch.nn.CrossEntropyLoss()
+        self.criterion = torch.nn.SmoothL1Loss()
 
-        self.temp = self.cfg.component.temp
-        self.soft_target_loss_weight = self.cfg.component.soft_target_loss_weight
-        self.ce_loss_weight = self.cfg.component.ce_loss_weight
         
 
     def get_batch(self):
@@ -88,6 +90,7 @@ class KdTrainer():
 
     def train(self):
         logger.info('Start training KD')
+        self.teacher_model.eval()
         for iteration in range(self.cfg.component.num_iterations):
 
             states, actions, rtg, timesteps, mask = self.get_batch()
@@ -95,13 +98,13 @@ class KdTrainer():
             action_target = action_target.reshape(-1,1)[mask.reshape(-1) > 0]
 
             self.optimizer.zero_grad()
-
             with torch.no_grad():
                 teacher_action_preds = self.teacher_model.forward(states=states,
                                     actions=actions,
                                     returns_to_go=rtg,
                                     timesteps=timesteps,
                                     padding_mask=mask)
+
             teacher_action_preds = teacher_action_preds.reshape(-1,1)[mask.reshape(-1) > 0]
            
             student_action_preds = self.student_model.forward(states=states,
@@ -111,67 +114,56 @@ class KdTrainer():
                                                             padding_mask=mask)
             student_action_preds = student_action_preds.reshape(-1,1)[mask.reshape(-1) > 0]
 
-
-
-            soft_targets = torch.nn.functional.softmax(teacher_action_preds / self.temp, dim=-1)
-            soft_prob = torch.nn.functional.log_softmax(student_action_preds / self.temp, dim=-1)
-
-            soft_targets_loss = torch.sum(soft_targets * (soft_targets.log() - soft_prob)) / soft_prob.size()[0] * (self.temp**2)
-
-            label_loss = self.criterion(student_action_preds, action_target)
-
-            loss = self.soft_target_loss_weight * soft_targets_loss + self.ce_loss_weight * label_loss
-
+            loss = self.criterion(student_action_preds, teacher_action_preds)
             loss.backward()
+            
             self.optimizer.step()
 
-            print(loss)
+            if (iteration+1) % self.cfg.component.eval_interval == 0:
+                final_cost = self.val(torch.tensor(40.0, device=self.DEVICE))
     
-    def eval(self, target_return):
-        self._model.eval()
-        datasets = make_dataset(cfg=self._cfg, modes=['test'], device=self._device)
-        env =  make_env(cfg=self._cfg, datasets=datasets, device=self._device)
-        env.to(device=self._device)
-        env.base_env.eval()
-        action_spec = env.base_env.action_spec.space
-        _td = env.reset()
-        td = TensorDict({},batch_size=[336],device=self._device)
+    def val(self, target_return):
+        self.student_model.eval()
+        with torch.no_grad():
+            val_dataset = make_dataset(cfg=self.cfg, mode='val', device=self.DEVICE)
+            val_env =  make_env(cfg=self.cfg, dataset=val_dataset, device=self.DEVICE)
+            val_env.to(device=self.DEVICE)
+            val_env.base_env.eval()
+            action_spec = val_env.base_env.action_spec.space
+            _td = val_env.reset()
+            td = TensorDict({},batch_size=[1344],device=self.DEVICE)
 
-        states = _td['observation']
-        actions = torch.zeros((0, 1), device=self._device, dtype=torch.float32)
+            states = _td['observation']
+            actions = torch.zeros((0, 1), device=self.DEVICE, dtype=torch.float32)
 
-        actions = torch.cat([actions, torch.zeros((1, 1), device=self._device)], dim=0)
-        target_return = target_return.reshape(1, 1)
-        timesteps = torch.tensor(0, device=self._device, dtype=torch.long).reshape(1, 1)
-
-
-        for i in range(336):
-
-            actions = torch.cat([actions, torch.zeros((1, 1), device=self._device)], dim=0)
-
-            action = self._model.get_action(states=states,
-                                            actions=actions,
-                                            rtg=target_return,
-                                            timesteps=timesteps)
-            
-            actions[-1] = action
-            action = action.detach()
-            action = torch.clip(action,action_spec.low,action_spec.high)
+            actions = torch.cat([actions, torch.zeros((1, 1), device=self.DEVICE)], dim=0)
+            target_return = target_return.reshape(1, 1)
+            timesteps = torch.tensor(0, device=self.DEVICE, dtype=torch.long).reshape(1, 1)
 
 
-            _td['action'] = action
-            _td = env.step(_td)
-            td[i] = _td
-            _td = step_mdp(_td, keep_other=True)
+            for i in range(1344):
+                actions = torch.cat([actions, torch.zeros((1, 1), device=self.DEVICE)], dim=0)
+                action = self.student_model.get_action(states=states,
+                                                actions=actions,
+                                                rtg=target_return,
+                                                timesteps=timesteps)
+                
+                actions[-1] = action
+                action = action.detach()
+                action = torch.clip(action,action_spec.low,action_spec.high)
 
-            new_state = _td['observation']
-            states = torch.cat([states, new_state], dim=0)
-            pred_return = target_return[0,-1] - (td[i]['cost'])
-            target_return = torch.cat(
-                [target_return, pred_return.reshape(1, 1)], dim=1)
-            timesteps = torch.cat(
-                [timesteps,
-                torch.ones((1, 1), device=self._device, dtype=torch.long) * (i+1)], dim=1)
-            
-        print(target_return)
-        print(torch.sum(td['cost']))
+
+                _td['action'] = action
+                _td = val_env.step(_td)
+                td[i] = _td
+                _td = step_mdp(_td, keep_other=True)
+
+                new_state = _td['observation']
+                states = torch.cat([states, new_state], dim=0)
+                pred_return = target_return[0,-1] - (td[i]['cost'])
+                target_return = torch.cat(
+                    [target_return, pred_return.reshape(1, 1)], dim=1)
+                timesteps = torch.cat(
+                    [timesteps,
+                    torch.ones((1, 1), device=self.DEVICE, dtype=torch.long) * (i+1)], dim=1)
+            return torch.sum(td['next']['cost'], dim=0)

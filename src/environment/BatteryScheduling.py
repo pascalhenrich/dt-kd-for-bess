@@ -36,7 +36,6 @@ class BatteryScheduling(EnvBase):
         else:
             td_in['params'] = self._make_params()['params']
 
-        # Use random dataset while training and always first day during eval/test
         if self.training:
             self.ds_number = torch.randint(low=0,high=len(self.datasets)-1,size=(), device=self.DEVICE)
             init_soe = torch.rand((), device=self.DEVICE)* td_in['params','battery_capacity']

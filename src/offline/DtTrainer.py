@@ -2,7 +2,7 @@ import torch
 from tensordict import TensorDict
 from torchrl.envs.utils import step_mdp
 from dataset.OfflineDataset import OfflineDataset
-from utils import make_dataset, make_env
+from utils import make_dataset, make_env, make_offline_dataset
 from offline.DecisionTransformer import DecisionTransformer
 from torchinfo import summary
 import os
@@ -16,18 +16,27 @@ class DtTrainer():
         self.DEVICE = device
 
     def setup(self):
-        self.train_dataset = OfflineDataset(self.cfg.generated_data_path, self.cfg.component.dataset.sliding_window_size, self.cfg.component.dataset.sliding_window_offset, self.cfg.building_id, self.DEVICE)
+        self.train_dataset = make_offline_dataset(cfg=self.cfg,
+                                                  mode='local',
+                                                  device=self.DEVICE)
         self.state_dim = self.train_dataset[0]['observation'].shape[-1]
-        self.action_dim = self.train_dataset[0]['action'].shape[-1]
         self.max_ep_len = len(self.train_dataset[0])
+
+        spec_dataset = make_dataset(cfg=self.cfg, mode='train_half', device=self.DEVICE)
+        spec_env =  make_env(cfg=self.cfg, dataset=spec_dataset, device=self.DEVICE)
+        action_spec = spec_env.action_spec
+        self.action_dim = action_spec.shape[0]
+        
 
         self.model = DecisionTransformer(
             cfg=self.cfg,
             state_dim=self.state_dim,
-            action_dim=self.action_dim,
+            action_spec=action_spec,
             max_context_length=self.cfg.component.max_context_length,
             max_ep_length=self.max_ep_len,
             model_dim=self.cfg.component.model_dim,
+            num_heads=self.cfg.component.transformer.num_heads,
+            num_layers=self.cfg.component.transformer.num_layers,
             device=self.DEVICE,
         ).to(device=self.DEVICE)
 
@@ -112,8 +121,7 @@ class DtTrainer():
             self.optimizer.step()
 
             if (iteration+1) % self.cfg.component.eval_interval == 0:
-                tensordict_result = self.val(torch.tensor(40.0, device=self.DEVICE))
-                final_cost = torch.sum(tensordict_result['next']['cost'], dim=0)
+                final_cost = self.val(torch.tensor(self.cfg.component.target_return.val, device=self.DEVICE))
                 if final_cost < best_iteration['value']:
                     best_iteration['iteration'] = iteration
                     best_iteration['value'] = final_cost
@@ -121,13 +129,8 @@ class DtTrainer():
                     os.makedirs(f'{self.cfg.model_path}/', exist_ok=True)
                     torch.save(self.model.state_dict(), f'{self.cfg.model_path}/transformer.pth')
 
-            if iteration - best_iteration['iteration'] > 500:
-                metrics = {
-                    'best_iteration': best_iteration['iteration'],
-                    'final_cost': best_iteration['value']
-                }
-                torch.save(metrics, f'{self.cfg.output_path}/metrics.pt')
-                return
+            if iteration - best_iteration['iteration'] > 1000:
+                return best_iteration['value']
 
     
     def val(self, target_return):
@@ -174,5 +177,53 @@ class DtTrainer():
                 timesteps = torch.cat(
                     [timesteps,
                     torch.ones((1, 1), device=self.DEVICE, dtype=torch.long) * (i+1)], dim=1)
-            return td
-            
+            return torch.sum(td['next']['cost'], dim=0)
+        
+    def test(self, target_return):
+        self.model.eval()
+        with torch.no_grad():
+            test_dataset = make_dataset(cfg=self.cfg, mode='test', device=self.DEVICE)
+            test_env =  make_env(cfg=self.cfg, dataset=test_dataset, device=self.DEVICE)
+            test_env.to(device=self.DEVICE)
+            test_env.base_env.eval()
+            action_spec = test_env.base_env.action_spec.space
+            _td = test_env.reset()
+            td = TensorDict({},batch_size=[1344],device=self.DEVICE)
+
+            states = _td['observation']
+            actions = torch.zeros((0, 1), device=self.DEVICE, dtype=torch.float32)
+
+            actions = torch.cat([actions, torch.zeros((1, 1), device=self.DEVICE)], dim=0)
+            target_return = target_return.reshape(1, 1)
+            timesteps = torch.tensor(0, device=self.DEVICE, dtype=torch.long).reshape(1, 1)
+
+
+            for i in range(1344):
+                actions = torch.cat([actions, torch.zeros((1, 1), device=self.DEVICE)], dim=0)
+                action = self.model.get_action(states=states,
+                                                actions=actions,
+                                                rtg=target_return,
+                                                timesteps=timesteps)
+                
+                actions[-1] = action
+                action = action.detach()
+                action = torch.clip(action,action_spec.low,action_spec.high)
+
+
+                _td['action'] = action
+                _td = test_env.step(_td)
+                td[i] = _td
+                _td = step_mdp(_td, keep_other=True)
+
+                new_state = _td['observation']
+                states = torch.cat([states, new_state], dim=0)
+                pred_return = target_return[0,-1] - (td[i]['cost'])
+                target_return = torch.cat(
+                    [target_return, pred_return.reshape(1, 1)], dim=1)
+                timesteps = torch.cat(
+                    [timesteps,
+                    torch.ones((1, 1), device=self.DEVICE, dtype=torch.long) * (i+1)], dim=1)
+            final_cost = torch.sum(td['next']['cost'], dim=0)
+            logger.info(f'Test cost: {final_cost.item()}')
+            return final_cost
+                

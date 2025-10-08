@@ -5,6 +5,7 @@ from torchrl.envs import (
     Compose,
     InitTracker,
 )
+from torch import nn
 from environment.BatteryScheduling import BatteryScheduling
 from dataset.OnlineDataset import OnlineDataset
 from dataset.OfflineDataset import OfflineDataset
@@ -38,10 +39,11 @@ def make_offline_dataset(cfg, mode, device):
     match mode:
         case 'local':
             ds = OfflineDataset(generated_data_path=cfg.generated_data_path,
-                                sliding_window_size=cfg.component.sliding_window_size,
-                                sliding_window_offset=cfg.component.sliding_window_offset,
+                                sliding_window_size=cfg.component.dataset.sliding_window_size,
+                                sliding_window_offset=cfg.component.dataset.sliding_window_offset,
                                 building_id=cfg.building_id,
                                 device=device)
+            return ds
         case 'global':
             concat_ds = []
             for filename in os.listdir(cfg.generated_data_path):
@@ -69,3 +71,13 @@ def make_env(cfg, dataset, device):
                                                         out_key='observation',
                                                         del_keys=False)).to(device=device)
                             ).to(device=device)
+
+
+class ScalingLayer(nn.Module):
+    def __init__(self, action_spec):
+        super().__init__()
+        self.action_spec = action_spec
+        
+    def forward(self, x):
+        out = x*self.action_spec.space.high
+        return out

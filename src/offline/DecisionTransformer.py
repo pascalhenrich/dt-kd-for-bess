@@ -1,12 +1,15 @@
 import torch
 import torch.nn as nn
 
+from utils import ScalingLayer
+
 class DecisionTransformer(nn.Module):
-    def __init__(self, cfg, state_dim, action_dim, max_context_length, max_ep_length, model_dim, num_heads, num_layers, device):
+    def __init__(self, cfg, state_dim, action_spec, max_context_length, max_ep_length, model_dim, num_heads, num_layers, device):
         super().__init__()
         self.cfg = cfg
         self.state_dim = state_dim
-        self.action_dim = action_dim
+        self.action_spec = action_spec
+        self.action_dim = action_spec.shape[0]
         self.max_context_length = max_context_length
         self.max_ep_length = max_ep_length
         self.model_dim = model_dim
@@ -23,7 +26,8 @@ class DecisionTransformer(nn.Module):
 
         self.predict_action = nn.Sequential(
             nn.Linear(self.model_dim, self.action_dim),
-            nn.Tanh()
+            nn.Tanh(),
+            ScalingLayer(self.action_spec)
         )
         decoder_layer = nn.TransformerDecoderLayer(
             d_model=self.model_dim,
@@ -64,7 +68,7 @@ class DecisionTransformer(nn.Module):
                              tgt_key_padding_mask=stacked_padding_mask)
         x = x.reshape(batch_size, seq_length, 3, self.model_dim).permute(0, 2, 1, 3)
 
-        return self.predict_action(x[:,1])*0.75
+        return self.predict_action(x[:,1])
 
     def get_action(self, states, actions, rtg, timesteps):
 

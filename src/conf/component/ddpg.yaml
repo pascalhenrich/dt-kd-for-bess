@@ -1,8 +1,8 @@
 name: ddpg
-mode: train_full
+mode: train_half
 dataset:
-  sliding_window_size: 96
-  sliding_window_offset: 48
+  sliding_window_size: 144
+  sliding_window_offset: 24
   forecast_horizon: 32
 policy:
   num_cells: [400,300]

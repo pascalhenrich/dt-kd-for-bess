@@ -115,7 +115,7 @@ class DdpgTrainer():
             'optimiser_dict': optimiser_dict,
         }
 
-        if self.cfg.component.mode=='generate' or self.cfg.component.mode=='test':
+        if self.cfg.component.mode=='generate':
             loss_module.load_state_dict(torch.load(f'{self.cfg.model_path}/loss_module.pth'))
 
     def train(self):
@@ -159,8 +159,7 @@ class DdpgTrainer():
 
             if (iteration+1) % self.cfg.component.eval_interval == 0:
                 t_11 = time.perf_counter()
-                tensordict_result = self.val(loss_module)
-                final_cost = torch.sum(tensordict_result['next']['cost'], dim=0)
+                final_cost = self.val(loss_module)
                 if final_cost < best_iteration['value']:
                     best_iteration['iteration'] = iteration
                     best_iteration['value'] = final_cost
@@ -180,7 +179,7 @@ class DdpgTrainer():
                     'training_time': t1 - t0 - eval_time,
                 }
 
-                torch.save(metrics, f'{self.cfg.output_path}/metrics.pt')
+                
                 
                 return best_iteration['value']
             
@@ -190,24 +189,31 @@ class DdpgTrainer():
             val_env =  make_env(cfg=self.cfg, dataset=val_dataset, device=self.DEVICE)
             val_env.base_env.eval()
             tensordict_result = val_env.rollout(max_steps=100000, policy=loss_module.actor_network)
-            return tensordict_result
+            final_cost = torch.sum(tensordict_result['next']['cost'], dim=0)
+            return final_cost
+        
+    def test(self):
+        loss_module = self._statefull_componentonents['loss']
+        loss_module.load_state_dict(torch.load(f'{self.cfg.model_path}/loss_module.pth'))
+        with torch.no_grad():
+            test_dataset = make_dataset(cfg=self.cfg, mode='test', device=self.DEVICE)
+            test_env =  make_env(cfg=self.cfg, dataset=test_dataset, device=self.DEVICE)
+            test_env.base_env.eval()
+            tensordict_result = test_env.rollout(max_steps=100000, policy=loss_module.actor_network)
+            final_cost = torch.sum(tensordict_result['next']['cost'], dim=0)
+        logger.info(f'Test cost: {final_cost.item()}')
+        return final_cost
             
     def generate_data(self):
         loss_module = self._statefull_componentonents['loss']
         generate_dataset = make_dataset(cfg=self.cfg, mode=self.cfg.component.mode, device=self.DEVICE)
-        weeks = len(generate_dataset)
+        months = len(generate_dataset)
         env =  make_env(cfg=self.cfg, dataset=generate_dataset, device=self.DEVICE)
         env.base_env.eval()
         output = env.rollout(max_steps=100000, policy=loss_module.actor_network)
-        for i in range(1,weeks):
+        for i in range(1,months):
             td = env.rollout(max_steps=100000, policy=loss_module.actor_network)
             output = torch.cat([output,td])
         torch.save(output, f'../data/2_generated/{self.cfg.building_id}.pt')
 
-    def test(self):
-        loss_module = self._statefull_componentonents['loss']
-        test_dataset = make_dataset(cfg=self.cfg, mode='test', device=self.DEVICE)
-        env =  make_env(cfg=self.cfg, dataset=test_dataset, device=self.DEVICE)
-        env.base_env.eval()
-        tensordict_result = env.rollout(max_steps=100000, policy=loss_module.actor_network)
-        logger.info(f'Test set results: {torch.sum(tensordict_result['next']['cost'], dim=0).item()}')
+
