@@ -1,7 +1,7 @@
 name: kd
 mode: train
-batch_size: 32
-num_iterations: 1000
+batch_size: 64
+num_iterations: 3000
 eval_interval: 10
 max_context_length: 96
 dataset:
@@ -11,7 +11,7 @@ dataset:
 optimizer:
   lr: 1e-4
 teacher:
-  model_dim: 512
+  model_dim: 128
   transformer:
     num_heads: 4
     num_layers: 6
@@ -19,4 +19,7 @@ student:
   model_dim: 128
   transformer:
     num_heads: 4
-    num_layers: 6
+    num_layers: 3
+target_return:
+  val:
+  test:

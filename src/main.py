@@ -57,8 +57,13 @@ def main(cfg: HydraConfig):
         case 'kd':
             trainer = KdTrainer(cfg=cfg, device=DEVICE)
             trainer.setup()
-            if cfg.component.mode=='train':
-                trainer.train()
+            val = trainer.train()
+            test = trainer.test(torch.tensor(cfg.component.target_return.test, device=DEVICE))
+            metrics = TensorDict({
+                'val': val,
+                'test': test
+            })
+            torch.save(metrics, f'{cfg.output_path}/metrics.pt')
 
 
 
