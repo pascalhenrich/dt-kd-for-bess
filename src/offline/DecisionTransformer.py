@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from utils import ScalingLayer
+from utils import ScalingLayer, make_transfomer
 
 class DecisionTransformer(nn.Module):
     def __init__(self, cfg, state_dim, action_spec, max_context_length, max_ep_length, model_dim, num_heads, num_layers, device):
@@ -29,12 +29,8 @@ class DecisionTransformer(nn.Module):
             nn.Tanh(),
             ScalingLayer(self.action_spec)
         )
-        decoder_layer = nn.TransformerDecoderLayer(
-            d_model=self.model_dim,
-            nhead=self.num_heads,
-            batch_first=True,
-        )
-        self.transformer = nn.TransformerDecoder(decoder_layer=decoder_layer, num_layers=self.num_layers)
+
+        self.transformer = make_transfomer(cfg, device)
 
     def forward(self, states, actions, returns_to_go, timesteps, padding_mask=None):
         batch_size, seq_length = states.shape[0], states.shape[1]

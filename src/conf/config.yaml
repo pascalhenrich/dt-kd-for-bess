@@ -6,10 +6,10 @@ defaults:
   - component: ddpg
   - _self_
  
-output_path: ../output/${component.name}/${component.mode}/${building_id}
-model_path: ../model/${component.name}/${component.mode}/${building_id}
+output_path: ../output/${seed}/${component.name}/${component.mode}/${building_id}
+model_path: ../model/${seed}/${component.name}/${component.mode}/${building_id}
 raw_data_path: ../data/1_processed
-generated_data_path: ../data/2_generated
+generated_data_path: ../data/2_generated/${seed}
 
 building_id: 13
 seed: 42

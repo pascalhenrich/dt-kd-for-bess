@@ -1,10 +1,11 @@
 name: dt
 mode: train
-batch_size: 64
-num_iterations: 3000
+batch_size: 32
+num_iterations: 5000
 eval_interval: 10
-max_context_length: 48
+max_context_length: 96
 dataset:
+  mode: global
   sliding_window_size: 1344
   sliding_window_offset: 1344
   forecast_horizon: 32
@@ -12,10 +13,11 @@ optimizer:
   lr: 1e-4
   weight_decay: 1e-4
 transformer:
+  model: basic
   num_heads: 4
-  num_layers: 6
-model_dim: 128
+  num_layers: 12
+model_dim: 512
 target_return:
-  val:
-  test:
+  val: 50
+  test: 200
 

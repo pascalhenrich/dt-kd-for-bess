@@ -21,4 +21,5 @@ tau: 0.005
 lr:
   actor: 1e-4
   value: 1e-3
-eval_interval: 10
+val_interval: 10
+early_stopping_patience: 2000

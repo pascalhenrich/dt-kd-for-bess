@@ -9,6 +9,7 @@ from torch import nn
 from environment.BatteryScheduling import BatteryScheduling
 from dataset.OnlineDataset import OnlineDataset
 from dataset.OfflineDataset import OfflineDataset
+from offline.Models import GPT2
 import os
 from torch.utils.data import ConcatDataset
 
@@ -50,8 +51,8 @@ def make_offline_dataset(cfg, mode, device):
                 if filename.endswith(".pt") and filename[:-3].isdigit():
                     building_id = int(filename[:-3])
                     concat_ds.append(OfflineDataset(generated_data_path=cfg.generated_data_path,
-                                        sliding_window_size=cfg.component.sliding_window_size,
-                                        sliding_window_offset=cfg.component.sliding_window_offset,
+                                        sliding_window_size=cfg.component.dataset.sliding_window_size,
+                                        sliding_window_offset=cfg.component.dataset.sliding_window_offset,
                                         building_id=building_id,
                                         device=device))
             return ConcatDataset(concat_ds)
@@ -73,6 +74,20 @@ def make_env(cfg, dataset, device):
                             ).to(device=device)
 
 
+
+def make_transfomer(cfg, device):
+    match cfg.component.transformer.model:
+        case 'basic':
+            decoder_layer = nn.TransformerDecoderLayer(d_model=cfg.component.model_dim,
+                                                       nhead=cfg.component.transformer.num_heads,
+                                                       batch_first=True,
+                                                       device=device)
+            return nn.TransformerDecoder(decoder_layer=decoder_layer,
+                                         num_layers=cfg.component.transformer.num_layers)
+        case 'gpt2':
+            pass
+
+
 class ScalingLayer(nn.Module):
     def __init__(self, action_spec):
         super().__init__()
@@ -81,3 +96,4 @@ class ScalingLayer(nn.Module):
     def forward(self, x):
         out = x*self.action_spec.space.high
         return out
+    

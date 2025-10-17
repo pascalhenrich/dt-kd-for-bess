@@ -17,13 +17,17 @@ class DtTrainer():
 
     def setup(self):
         self.train_dataset = make_offline_dataset(cfg=self.cfg,
-                                                  mode='local',
+                                                  mode=self.cfg.component.dataset.mode,
                                                   device=self.DEVICE)
         self.state_dim = self.train_dataset[0]['observation'].shape[-1]
         self.max_ep_len = len(self.train_dataset[0])
 
-        spec_dataset = make_dataset(cfg=self.cfg, mode='train_half', device=self.DEVICE)
-        spec_env =  make_env(cfg=self.cfg, dataset=spec_dataset, device=self.DEVICE)
+        spec_dataset = make_dataset(cfg=self.cfg,
+                                    mode='train_half', 
+                                    device=self.DEVICE)
+        spec_env =  make_env(cfg=self.cfg, 
+                             dataset=spec_dataset, 
+                             device=self.DEVICE)
         action_spec = spec_env.action_spec
         self.action_dim = action_spec.shape[0]
         
@@ -44,7 +48,7 @@ class DtTrainer():
         actions = torch.zeros((1, self.cfg.component.max_context_length, self.action_dim), dtype=torch.float32, device=self.DEVICE)
         rtgs = torch.zeros((1, self.cfg.component.max_context_length, 1), dtype=torch.float32, device=self.DEVICE)
         timesteps = torch.zeros((1, self.cfg.component.max_context_length), dtype=torch.long, device=self.DEVICE)
-        mask = torch.ones((1, self.cfg.component.max_context_length), dtype=torch.bool, device=self.DEVICE)
+        mask = torch.ones((1, self.cfg.component.max_context_length), dtype=torch.float32, device=self.DEVICE)
 
         summary(
             self.model,
@@ -69,16 +73,16 @@ class DtTrainer():
         rtgs = torch.empty((self.cfg.component.batch_size, self.cfg.component.max_context_length, 1), device=self.DEVICE)
         timesteps = torch.empty((self.cfg.component.batch_size, self.cfg.component.max_context_length,), dtype=torch.int32, device=self.DEVICE)
         masks  = torch.empty((self.cfg.component.batch_size, self.cfg.component.max_context_length,), device=self.DEVICE)
-        trajectory = self.train_dataset[traj_index]
-        trajectory_len = trajectory.shape[1]
 
         for i in range(self.cfg.component.batch_size):
+            trajectory = self.train_dataset[traj_index[i]]
+            trajectory_len = trajectory.shape[0]
             traj_slice = torch.randint(low=0,high=trajectory_len-1,size=(), device=self.DEVICE)
             #  Get data
-            state = trajectory[i]['observation'][traj_slice:traj_slice+self.cfg.component.max_context_length]
-            action = trajectory[i]['action'][traj_slice:traj_slice+self.cfg.component.max_context_length]
-            rtg = trajectory[i]['ctg'][traj_slice:traj_slice+self.cfg.component.max_context_length]
-            timestep = trajectory[i]['step'][traj_slice:traj_slice+self.cfg.component.max_context_length].squeeze(-1)
+            state = trajectory['observation'][traj_slice:traj_slice+self.cfg.component.max_context_length]
+            action = trajectory['action'][traj_slice:traj_slice+self.cfg.component.max_context_length]
+            rtg = trajectory['ctg'][traj_slice:traj_slice+self.cfg.component.max_context_length]
+            timestep = trajectory['step'][traj_slice:traj_slice+self.cfg.component.max_context_length].squeeze(-1)
             
             # Add padding
             tlen = state.shape[0]
@@ -100,11 +104,12 @@ class DtTrainer():
 
         })
 
+        metric_loss = []
+
         self.model.train()
         for iteration in range(self.cfg.component.num_iterations):
             states, actions, rtg, timesteps, mask = self.get_batch()
             action_target = torch.clone(actions)
-
             action_preds = self.model.forward(states=states,
                                 actions=actions,
                                 returns_to_go=rtg,
@@ -119,7 +124,7 @@ class DtTrainer():
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), .25)
             self.optimizer.step()
-
+            metric_loss.append(loss.item())
             if (iteration+1) % self.cfg.component.eval_interval == 0:
                 final_cost = self.val(torch.tensor(self.cfg.component.target_return.val, device=self.DEVICE))
                 if final_cost < best_iteration['value']:
@@ -130,7 +135,8 @@ class DtTrainer():
                     torch.save(self.model.state_dict(), f'{self.cfg.model_path}/transformer.pth')
 
             if iteration - best_iteration['iteration'] > 1000:
-                return best_iteration['value']
+                return best_iteration['value'], metric_loss
+        return best_iteration['value'], metric_loss
 
     
     def val(self, target_return):
@@ -180,6 +186,7 @@ class DtTrainer():
             return torch.sum(td['next']['cost'], dim=0)
         
     def test(self, target_return):
+        self.model.load_state_dict(torch.load(f'{self.cfg.model_path}/transformer.pth'))
         self.model.eval()
         with torch.no_grad():
             test_dataset = make_dataset(cfg=self.cfg, mode='test', device=self.DEVICE)

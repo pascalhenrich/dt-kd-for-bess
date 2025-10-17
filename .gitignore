@@ -1,6 +1,8 @@
 /.vscode
 /output
 /model
+/visual
+/scripts
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
