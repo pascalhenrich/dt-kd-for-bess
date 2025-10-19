@@ -3,6 +3,7 @@
 /model
 /visual
 /scripts
+/data/2_generated
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

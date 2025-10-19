@@ -5,7 +5,8 @@ from dataset.OfflineDataset import OfflineDataset
 from utils import make_dataset, make_env, make_offline_dataset
 from offline.DecisionTransformer import DecisionTransformer
 from torchinfo import summary
-import os
+import time
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -98,13 +99,16 @@ class DtTrainer():
     def train(self):
         logger.info('Start training DT')
 
+        train_loss = []
+        
         best_iteration = TensorDict({
                 'iteration': 0,
                 'value': 10000000,
 
         })
-
-        metric_loss = []
+       
+        t0 = time.perf_counter()
+        eval_time = 0.0
 
         self.model.train()
         for iteration in range(self.cfg.component.num_iterations):
@@ -124,19 +128,30 @@ class DtTrainer():
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), .25)
             self.optimizer.step()
-            metric_loss.append(loss.item())
+            train_loss.append(loss.detach())
+
             if (iteration+1) % self.cfg.component.eval_interval == 0:
+                t_11 = time.perf_counter()
                 final_cost = self.val(torch.tensor(self.cfg.component.target_return.val, device=self.DEVICE))
                 if final_cost < best_iteration['value']:
                     best_iteration['iteration'] = iteration
                     best_iteration['value'] = final_cost
-                    logger.info(f'Iteration: {iteration}, lowest cost: {final_cost.item()}')
-                    os.makedirs(f'{self.cfg.model_path}/', exist_ok=True)
                     torch.save(self.model.state_dict(), f'{self.cfg.model_path}/transformer.pth')
+                logger.info(f'Iteration: {iteration}, cost: {final_cost.item()} | Current lowest cost: {best_iteration["value"].item()} at iteration {best_iteration["iteration"].item()}')
+                t_12 = time.perf_counter()
+                eval_time += t_12 - t_11
 
-            if iteration - best_iteration['iteration'] > 1000:
-                return best_iteration['value'], metric_loss
-        return best_iteration['value'], metric_loss
+            if (iteration - best_iteration['iteration']) > self.cfg.component.early_stopping_patience:
+                break
+            
+        t1 = time.perf_counter()
+        metrics = {
+            'loss': train_loss,
+            'val_iteration': best_iteration['iteration'],
+            'val': best_iteration['value'],
+            'training_time': t1 - t0 - eval_time,
+        }            
+        return metrics
 
     
     def val(self, target_return):

@@ -20,4 +20,4 @@ model_dim: 512
 target_return:
   val: 50
   test: 200
-
+early_stopping_patience: 500

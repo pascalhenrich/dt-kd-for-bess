@@ -49,14 +49,22 @@ def main(cfg: HydraConfig):
         case 'dt':
             trainer = DtTrainer(cfg=cfg, device=DEVICE)
             trainer.setup()
-            val, loss = trainer.train()
-            test = trainer.test(torch.tensor(cfg.component.target_return.test, device=DEVICE))
-            metrics = TensorDict({
-                'val': val,
-                'test': test,
-                'loss': loss
-            })
-            torch.save(metrics, f'{cfg.output_path}/metrics.pt')
+            if cfg.component.dataset.mode=='local':
+                metrics = trainer.train()
+                test = trainer.test(torch.tensor(cfg.component.target_return.test, device=DEVICE))
+                metrics['test'] = test
+                torch.save(metrics, f'{cfg.output_path}/metrics.pt')
+            elif cfg.component.dataset.mode=='global':
+                if cfg.component.mode=='train':
+                    metrics = trainer.train()
+                    torch.save(metrics, f'{cfg.output_path}/train_metrics.pt')
+                elif cfg.component.mode=='test':
+                    test = trainer.test(torch.tensor(cfg.component.target_return.test, device=DEVICE))
+                    metrics = TensorDict({
+                        'test': test
+                    })
+                    torch.save(metrics, f'{cfg.output_path}/metrics.pt')
+
         case 'kd':
             trainer = KdTrainer(cfg=cfg, device=DEVICE)
             trainer.setup()
