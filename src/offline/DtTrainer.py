@@ -130,9 +130,12 @@ class DtTrainer():
             self.optimizer.step()
             train_loss.append(loss.detach())
 
-            if (iteration+1) % self.cfg.component.eval_interval == 0:
+            if (iteration+1) % self.cfg.component.val_interval == 0:
                 t_11 = time.perf_counter()
-                final_cost = self.val(torch.tensor(self.cfg.component.target_return.val, device=self.DEVICE))
+                if len(self.cfg.component.dataset.val_list) == 0:
+                    final_cost = self.val(torch.tensor(self.cfg.component.target_return.val, device=self.DEVICE))
+                elif len(self.cfg.component.dataset.val_list) > 0:
+                    final_cost = self.val_global()
                 if final_cost < best_iteration['value']:
                     best_iteration['iteration'] = iteration
                     best_iteration['value'] = final_cost
@@ -199,6 +202,15 @@ class DtTrainer():
                     [timesteps,
                     torch.ones((1, 1), device=self.DEVICE, dtype=torch.long) * (i+1)], dim=1)
             return torch.sum(td['next']['cost'], dim=0)
+        
+    def val_global(self):
+        original_building_id = self.cfg.building_id
+        final_cost = torch.tensor([0.0], device=self.DEVICE)
+        for index in range(len(self.cfg.component.dataset.val_list)):
+            self.cfg.building_id = self.cfg.component.dataset.val_list[index]
+            final_cost += self.val(torch.tensor(self.cfg.component.target_return.val[index], device=self.DEVICE))
+        self.cfg.building_id = original_building_id
+        return final_cost
         
     def test(self, target_return):
         self.model.load_state_dict(torch.load(f'{self.cfg.model_path}/transformer.pth'))

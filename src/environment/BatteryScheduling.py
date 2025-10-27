@@ -50,9 +50,9 @@ class BatteryScheduling(EnvBase):
 
         step = torch.tensor(0, dtype=torch.int64, device=self.DEVICE)
         prosumption = self._current_dataset['prosumption'][step]
-        prosumption_forecast = self._current_dataset['prosumption'][step:step+self.cfg.component.dataset.forecast_horizon-1]
+        prosumption_forecast = self._current_dataset['prosumption'][step+1:step+self.cfg.component.dataset.forecast_horizon]
         price = self._current_dataset['price'][step]
-        price_forecast = self._current_dataset['price'][step:step+self.cfg.component.dataset.forecast_horizon-1]
+        price_forecast = self._current_dataset['price'][step+1:step+self.cfg.component.dataset.forecast_horizon]
 
         td_out = TensorDict(
             {
@@ -77,9 +77,9 @@ class BatteryScheduling(EnvBase):
         params = td_in['params']
 
         prosumption = self._current_dataset['prosumption'][step]
-        prosumption_forecast = self._current_dataset['prosumption'][step:step+self.cfg.component.dataset.forecast_horizon-1]
+        prosumption_forecast = self._current_dataset['prosumption'][step+1:step+self.cfg.component.dataset.forecast_horizon]
         price = self._current_dataset['price'][step]
-        price_forecast = self._current_dataset['price'][step:step+self.cfg.component.dataset.forecast_horizon-1]
+        price_forecast = self._current_dataset['price'][step+1:step+self.cfg.component.dataset.forecast_horizon]
 
         new_soe = torch.clip(old_soe + action, torch.tensor(0.0, device=self.DEVICE), params['battery_capacity'])
         clipped_action = new_soe - old_soe

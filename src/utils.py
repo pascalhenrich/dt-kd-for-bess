@@ -12,6 +12,9 @@ from dataset.OfflineDataset import OfflineDataset
 from offline.Models import GPT2
 import os
 from torch.utils.data import ConcatDataset
+import random
+import numpy as np
+import torch
 
 
 def make_dataset(cfg, mode, device):
@@ -97,3 +100,19 @@ class ScalingLayer(nn.Module):
         out = x*self.action_spec.space.high
         return out
     
+
+def set_deterministic(seed: int = 42):
+    """
+    Make PyTorch, NumPy, and Python deterministic.
+    Works with CUDA, cuDNN, and HuggingFace transformers.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True)
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"  # For CUDA >= 10.2

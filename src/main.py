@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 from online.DdpgTrainer import DdpgTrainer
 from offline.DtTrainer import DtTrainer
 from offline.KdTrainer import KdTrainer
+from utils import set_deterministic
 
 
 
@@ -26,8 +27,7 @@ def main(cfg: HydraConfig):
     logger.info(f'{device} initialized!')
 
      # Set Seed
-    torch.manual_seed(cfg.seed)
-    torch.cuda.manual_seed_all(cfg.seed)
+    set_deterministic(cfg.seed)
     logger.info(f'Seed: {cfg.seed} initialized!')
 
     # Init Directories
@@ -49,22 +49,16 @@ def main(cfg: HydraConfig):
         case 'dt':
             trainer = DtTrainer(cfg=cfg, device=DEVICE)
             trainer.setup()
-            if cfg.component.dataset.mode=='local':
-                metrics = trainer.train()
+            metrics = trainer.train()
+            if len(cfg.component.dataset.val_list) == 0:
                 test = trainer.test(torch.tensor(cfg.component.target_return.test, device=DEVICE))
                 metrics['test'] = test
-                torch.save(metrics, f'{cfg.output_path}/metrics.pt')
-            elif cfg.component.dataset.mode=='global':
-                if cfg.component.mode=='train':
-                    metrics = trainer.train()
-                    torch.save(metrics, f'{cfg.output_path}/train_metrics.pt')
-                elif cfg.component.mode=='test':
-                    test = trainer.test(torch.tensor(cfg.component.target_return.test, device=DEVICE))
-                    metrics = TensorDict({
-                        'test': test
-                    })
-                    torch.save(metrics, f'{cfg.output_path}/metrics.pt')
-
+            elif len(cfg.component.dataset.val_list) > 0:
+                for index in range(len(cfg.component.dataset.val_list)):
+                    cfg.building_id = cfg.component.dataset.val_list[index]
+                    test = trainer.test(torch.tensor(cfg.component.target_return.test[index], device=DEVICE))
+                    metrics[f'test_{cfg.building_id}'] = test
+            torch.save(metrics, f'{cfg.output_path}/metrics.pt')
         case 'kd':
             trainer = KdTrainer(cfg=cfg, device=DEVICE)
             trainer.setup()

@@ -2,10 +2,11 @@ name: dt
 mode: train
 batch_size: 32
 num_iterations: 5000
-eval_interval: 10
+val_interval: 10
 max_context_length: 96
 dataset:
   mode: global
+  val_list: []
   sliding_window_size: 1344
   sliding_window_offset: 1344
   forecast_horizon: 32
