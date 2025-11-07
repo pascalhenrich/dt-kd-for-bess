@@ -19,10 +19,18 @@ import torch
 
 def make_dataset(cfg, mode, device):
     match mode:
-        case 'train_full' | 'train_half' | 'generate':
+        case 'train_full' | 'train_half':
             ds = OnlineDataset(raw_data_path=cfg.raw_data_path,
                                sliding_window_size=cfg.component.dataset.sliding_window_size,
                                sliding_window_offset=cfg.component.dataset.sliding_window_offset,
+                               forecast_size=cfg.component.dataset.forecast_horizon,
+                               building_id=cfg.building_id,
+                               mode=mode,
+                               device=device)
+        case 'generate':
+            ds = OnlineDataset(raw_data_path=cfg.raw_data_path,
+                               sliding_window_size=24864,
+                               sliding_window_offset=24864,
                                forecast_size=cfg.component.dataset.forecast_horizon,
                                building_id=cfg.building_id,
                                mode=mode,
@@ -78,17 +86,24 @@ def make_env(cfg, dataset, device):
 
 
 
-def make_transfomer(cfg, device):
-    match cfg.component.transformer.model:
-        case 'basic':
-            decoder_layer = nn.TransformerDecoderLayer(d_model=cfg.component.model_dim,
-                                                       nhead=cfg.component.transformer.num_heads,
+def make_transfomer(cfg, model_dim, num_layers, num_heads, device):
+    decoder_layer = nn.TransformerDecoderLayer(d_model=model_dim,
+                                                       nhead=num_heads,
                                                        batch_first=True,
                                                        device=device)
-            return nn.TransformerDecoder(decoder_layer=decoder_layer,
-                                         num_layers=cfg.component.transformer.num_layers)
-        case 'gpt2':
-            pass
+    return nn.TransformerDecoder(decoder_layer=decoder_layer,
+                                         num_layers=num_layers)
+
+    # match cfg.component.transformer.model:
+    #     case 'basic':
+    #         decoder_layer = nn.TransformerDecoderLayer(d_model=model_dim,
+    #                                                    nhead=num_heads,
+    #                                                    batch_first=True,
+    #                                                    device=device)
+    #         return nn.TransformerDecoder(decoder_layer=decoder_layer,
+    #                                      num_layers=num_layers)
+    #     case 'gpt2':
+    #         pass
 
 
 class ScalingLayer(nn.Module):

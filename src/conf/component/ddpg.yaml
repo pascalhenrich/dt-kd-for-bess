@@ -3,7 +3,7 @@ mode: train_half
 dataset:
   sliding_window_size: 144
   sliding_window_offset: 24
-  forecast_horizon: 32
+  forecast_horizon: 24
 policy:
   num_cells: [400,300]
 ou:

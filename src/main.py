@@ -1,5 +1,4 @@
 import torch
-from tensordict import TensorDict
 import hydra
 from hydra.core.config_store import ConfigStore
 from conf.config import HydraConfig
@@ -39,12 +38,11 @@ def main(cfg: HydraConfig):
         case 'ddpg':
             trainer = DdpgTrainer(cfg=cfg, device=DEVICE)
             trainer.setup()
-            if cfg.component.mode=='train_full' or cfg.component.mode=='train_half':
-                metrics = trainer.train()
-                test = trainer.test()
-                metrics['test'] = test
-                torch.save(metrics, f'{cfg.output_path}/metrics.pt')
-            elif cfg.component.mode=='generate':
+            metrics = trainer.train()
+            test = trainer.test()
+            metrics['test'] = test
+            torch.save(metrics, f'{cfg.output_path}/metrics.pt')
+            if cfg.component.mode=='train_half':
                 trainer.generate_data()      
         case 'dt':
             trainer = DtTrainer(cfg=cfg, device=DEVICE)
@@ -62,12 +60,15 @@ def main(cfg: HydraConfig):
         case 'kd':
             trainer = KdTrainer(cfg=cfg, device=DEVICE)
             trainer.setup()
-            val = trainer.train()
-            test = trainer.test(torch.tensor(cfg.component.target_return.test, device=DEVICE))
-            metrics = TensorDict({
-                'val': val,
-                'test': test
-            })
+            metrics = trainer.train()
+            if len(cfg.component.dataset.val_list) == 0:
+                test = trainer.test(torch.tensor(cfg.component.target_return.test, device=DEVICE))
+                metrics['test'] = test
+            elif len(cfg.component.dataset.val_list) > 0:
+                for index in range(len(cfg.component.dataset.val_list)):
+                    cfg.building_id = cfg.component.dataset.val_list[index]
+                    test = trainer.test(torch.tensor(cfg.component.target_return.test[index], device=DEVICE))
+                    metrics[f'test_{cfg.building_id}'] = test
             torch.save(metrics, f'{cfg.output_path}/metrics.pt')
 
 

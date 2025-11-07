@@ -111,6 +111,8 @@ class DdpgTrainer():
 
         loss_actor = []
         loss_value = []
+        val_iteration = []
+        val_result = []
 
         best_iteration = TensorDict({
                 'iteration': 0,
@@ -142,6 +144,8 @@ class DdpgTrainer():
             if (iteration+1) % self.cfg.component.val_interval == 0:
                 t_11 = time.perf_counter()
                 final_cost = self.val(self.loss_module)
+                val_iteration.append(iteration)
+                val_result.append(final_cost)
                 if final_cost < best_iteration['value']:
                     best_iteration['iteration'] = iteration
                     best_iteration['value'] = final_cost
@@ -157,8 +161,10 @@ class DdpgTrainer():
         metrics = {
             'loss_actor': loss_actor,
             'loss_value': loss_value,
-            'val_iteration': best_iteration['iteration'],
-            'val': best_iteration['value'],
+            'val_iteration': val_iteration,
+            'val_result': val_result,
+            'best_val_iteration': best_iteration['iteration'],
+            'best_val_result': best_iteration['value'],
             'training_time': t1 - t0 - eval_time,
         }            
         return metrics
@@ -184,17 +190,14 @@ class DdpgTrainer():
         return final_cost
             
     def generate_data(self):
+        logger.info('Start generating data with trained DDPG agent')
         os.makedirs(f'{self.cfg.generated_data_path}/', exist_ok=True)
         self.loss_module.load_state_dict(torch.load(f'{self.cfg.model_path}/loss_module.pth'))
         with torch.no_grad():
-            generate_dataset = make_dataset(cfg=self.cfg, mode=self.cfg.component.mode, device=self.DEVICE)
-            months = len(generate_dataset)
+            generate_dataset = make_dataset(cfg=self.cfg, mode='generate', device=self.DEVICE)
             env =  make_env(cfg=self.cfg, dataset=generate_dataset, device=self.DEVICE)
             env.base_env.eval()
             output = env.rollout(max_steps=100000, policy=self.loss_module.actor_network)
-            for i in range(1,months):
-                td = env.rollout(max_steps=100000, policy=self.loss_module.actor_network)
-                output = torch.cat([output,td])
         torch.save(output, f'{self.cfg.generated_data_path}/{self.cfg.building_id}.pt')
 
 

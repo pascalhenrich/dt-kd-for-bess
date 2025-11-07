@@ -1,8 +1,6 @@
 import torch
 from tensordict import TensorDict
 from torch.utils.data import Dataset
-import pandas as pd
-import numpy as np
 
 class OnlineDataset(Dataset):
     def __init__(self, raw_data_path: str, sliding_window_size: int, sliding_window_offset: int, forecast_size: int, building_id: int, mode: str, device):
@@ -12,6 +10,7 @@ class OnlineDataset(Dataset):
 
         self._forecast_size = forecast_size
 
+        # Overlap correction for sliding windows
         if sliding_window_size != sliding_window_offset:
             overlap_correction = torch.max(torch.tensor(1, dtype=torch.int32), (torch.tensor(sliding_window_size/sliding_window_offset)).int() - 1)
         else:
@@ -20,31 +19,35 @@ class OnlineDataset(Dataset):
         # 1038 days for ddpg training (1037 clean days)
         if mode == 'train_full':
             selected_data = data[0:49824]
-            max_data = torch.tensor((49824-forecast_size)/sliding_window_offset).int() - overlap_correction
+            max_data = torch.tensor((49824-forecast_size-1)/sliding_window_offset).int() - overlap_correction
         # 519 days for ddpg training (518 clean days)
         if mode == 'train_half':
             selected_data = data[0:24912]
-            max_data = torch.tensor((24912-forecast_size)/sliding_window_offset).int() - overlap_correction
+            max_data = torch.tensor((24912-forecast_size-1)/sliding_window_offset).int() - overlap_correction
         # 519 days for dt training (518 clean days)
         elif mode == 'generate':
             selected_data = data[24912:49824]
-            max_data = torch.tensor((24912-forecast_size)/sliding_window_offset).int() - overlap_correction
+            max_data = torch.tensor((24912-forecast_size-1)/sliding_window_offset).int() - overlap_correction
         # 29 days for validation (28 clean days)
         elif mode == 'val':
             selected_data = data[49824:51216]
-            max_data = torch.tensor((1392-forecast_size)/sliding_window_offset).int() - overlap_correction
+            max_data = torch.tensor((1392-forecast_size-1)/sliding_window_offset).int() - overlap_correction
         # 29 days for testing (28 clean days)
         elif mode == 'test':
             selected_data = data[51216:52608]
-            max_data = torch.tensor((1392-forecast_size)/sliding_window_offset).int() - overlap_correction       
+            max_data = torch.tensor((1392-forecast_size-1)/sliding_window_offset).int() - overlap_correction       
             
+        # Reduce max_data by 1 if offset > 48 and windows are overlapping to avoid index error
+        if (sliding_window_offset > 48) & (sliding_window_size != sliding_window_offset):
+            max_data = max_data - 1        
+
         self._data = TensorDict({
-                'load': selected_data['load'].unfold(dimension=0,size=sliding_window_size+forecast_size,step=sliding_window_offset)[0:max_data],
-                'pv': selected_data['pv'].unfold(dimension=0,size=sliding_window_size+forecast_size,step=sliding_window_offset)[0:max_data],
-                'prosumption': selected_data['prosumption'].unfold(dimension=0,size=sliding_window_size+forecast_size,step=sliding_window_offset)[0:max_data],
-                'price': selected_data['price'].unfold(dimension=0,size=sliding_window_size+forecast_size,step=sliding_window_offset)[0:max_data]
+                'load': selected_data['load'].unfold(dimension=0,size=sliding_window_size+forecast_size+1,step=sliding_window_offset)[0:max_data],
+                'pv': selected_data['pv'].unfold(dimension=0,size=sliding_window_size+forecast_size+1,step=sliding_window_offset)[0:max_data],
+                'prosumption': selected_data['prosumption'].unfold(dimension=0,size=sliding_window_size+1+forecast_size,step=sliding_window_offset)[0:max_data],
+                'price': selected_data['price'].unfold(dimension=0,size=sliding_window_size+forecast_size+1,step=sliding_window_offset)[0:max_data]
             }, 
-            batch_size=torch.Size([max_data, sliding_window_size+forecast_size]),
+            batch_size=torch.Size([max_data, sliding_window_size+forecast_size+1]),
             device=device)
 
         self._batteryCapacity = self._calcBatteryCapacity(data[0:49824]['prosumption'])

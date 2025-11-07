@@ -30,7 +30,7 @@ class DecisionTransformer(nn.Module):
             ScalingLayer(self.action_spec)
         )
 
-        self.transformer = make_transfomer(cfg, device)
+        self.transformer = make_transfomer(self.cfg, self.model_dim, self.num_layers, self.num_heads, device)
 
     def forward(self, states, actions, returns_to_go, timesteps, padding_mask=None):
         batch_size, seq_length = states.shape[0], states.shape[1]

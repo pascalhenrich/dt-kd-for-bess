@@ -9,7 +9,7 @@ dataset:
   val_list: []
   sliding_window_size: 1344
   sliding_window_offset: 1344
-  forecast_horizon: 32
+  forecast_horizon: 24
 optimizer:
   lr: 1e-4
   weight_decay: 1e-4

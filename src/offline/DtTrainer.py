@@ -1,7 +1,6 @@
 import torch
 from tensordict import TensorDict
 from torchrl.envs.utils import step_mdp
-from dataset.OfflineDataset import OfflineDataset
 from utils import make_dataset, make_env, make_offline_dataset
 from offline.DecisionTransformer import DecisionTransformer
 from torchinfo import summary
@@ -104,7 +103,6 @@ class DtTrainer():
         best_iteration = TensorDict({
                 'iteration': 0,
                 'value': 10000000,
-
         })
        
         t0 = time.perf_counter()
