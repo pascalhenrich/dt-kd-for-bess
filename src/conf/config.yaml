@@ -5,11 +5,12 @@ hydra:
 defaults:
   - component: ddpg
   - _self_
- 
+
+name:
 output_path: ../output/${seed}/${component.name}/${component.mode}/${building_id}
 model_path: ../model/${seed}/${component.name}/${component.mode}/${building_id}
 raw_data_path: ../data/1_processed
-generated_data_path: ../data/2_generated/${seed}
+generated_data_path: ../data/2_generated
 
 building_id: 13
 seed: 42

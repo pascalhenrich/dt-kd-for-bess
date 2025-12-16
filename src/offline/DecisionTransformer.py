@@ -57,7 +57,7 @@ class DecisionTransformer(nn.Module):
         causal_mask = torch.triu(torch.full((3*seq_length, 3*seq_length), float('-inf'), device=self.device), diagonal=1)
 
         stacked_padding_mask = torch.stack((padding_mask,padding_mask,padding_mask), dim=1).permute(0,2,1).reshape(batch_size,3*seq_length)
-        
+
         x = self.transformer(tgt=stacked_inputs,
                              memory=dummy_memory, 
                              tgt_mask=causal_mask,

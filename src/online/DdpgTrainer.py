@@ -153,6 +153,10 @@ class DdpgTrainer():
                 logger.info(f'Iteration: {iteration}, cost: {final_cost.item()} | Current lowest cost: {best_iteration["value"].item()} at iteration {best_iteration["iteration"].item()}')
                 t_12 = time.perf_counter()
                 eval_time += t_12 - t_11
+                
+            if not self.cfg.component.max_train_iterations is None:
+                if iteration >= self.cfg.component.max_train_iterations:
+                    break
 
             if (iteration - best_iteration['iteration']) > self.cfg.component.early_stopping_patience:
                 break
@@ -191,13 +195,17 @@ class DdpgTrainer():
             
     def generate_data(self):
         logger.info('Start generating data with trained DDPG agent')
-        os.makedirs(f'{self.cfg.generated_data_path}/', exist_ok=True)
+        os.makedirs(f'{self.cfg.generated_data_path}/{self.cfg.name}/{self.cfg.seed}/', exist_ok=True)
         self.loss_module.load_state_dict(torch.load(f'{self.cfg.model_path}/loss_module.pth'))
         with torch.no_grad():
             generate_dataset = make_dataset(cfg=self.cfg, mode='generate', device=self.DEVICE)
+            months = len(generate_dataset)
             env =  make_env(cfg=self.cfg, dataset=generate_dataset, device=self.DEVICE)
             env.base_env.eval()
             output = env.rollout(max_steps=100000, policy=self.loss_module.actor_network)
-        torch.save(output, f'{self.cfg.generated_data_path}/{self.cfg.building_id}.pt')
+            for i in range(1,months):
+                td = env.rollout(max_steps=100000, policy=self.loss_module.actor_network)
+                output = torch.cat([output,td])
+        torch.save(output, f'{self.cfg.generated_data_path}/{self.cfg.name}/{self.cfg.seed}/{self.cfg.building_id}.pt')
 
 

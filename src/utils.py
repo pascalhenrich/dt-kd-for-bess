@@ -19,18 +19,19 @@ import torch
 
 def make_dataset(cfg, mode, device):
     match mode:
-        case 'train_full' | 'train_half':
+        case 'train':
             ds = OnlineDataset(raw_data_path=cfg.raw_data_path,
                                sliding_window_size=cfg.component.dataset.sliding_window_size,
                                sliding_window_offset=cfg.component.dataset.sliding_window_offset,
                                forecast_size=cfg.component.dataset.forecast_horizon,
+                               train_length=cfg.component.dataset.train_length,
                                building_id=cfg.building_id,
                                mode=mode,
                                device=device)
         case 'generate':
             ds = OnlineDataset(raw_data_path=cfg.raw_data_path,
-                               sliding_window_size=24864,
-                               sliding_window_offset=24864,
+                               sliding_window_size=1344,
+                               sliding_window_offset=1344,
                                forecast_size=cfg.component.dataset.forecast_horizon,
                                building_id=cfg.building_id,
                                mode=mode,

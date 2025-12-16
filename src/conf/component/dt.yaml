@@ -7,6 +7,7 @@ max_context_length: 96
 dataset:
   mode: global
   val_list: []
+  train_length: 49824
   sliding_window_size: 1344
   sliding_window_offset: 1344
   forecast_horizon: 24

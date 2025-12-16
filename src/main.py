@@ -42,8 +42,7 @@ def main(cfg: HydraConfig):
             test = trainer.test()
             metrics['test'] = test
             torch.save(metrics, f'{cfg.output_path}/metrics.pt')
-            if cfg.component.mode=='train_half':
-                trainer.generate_data()      
+            trainer.generate_data()      
         case 'dt':
             trainer = DtTrainer(cfg=cfg, device=DEVICE)
             trainer.setup()

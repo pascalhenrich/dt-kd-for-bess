@@ -1,6 +1,7 @@
 name: ddpg
-mode: train_half
+mode: train
 dataset:
+  train_length: 49824
   sliding_window_size: 144
   sliding_window_offset: 24
   forecast_horizon: 24
@@ -23,3 +24,4 @@ lr:
   value: 1e-3
 val_interval: 10
 early_stopping_patience: 2000
+max_train_iterations:

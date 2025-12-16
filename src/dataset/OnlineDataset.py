@@ -3,7 +3,7 @@ from tensordict import TensorDict
 from torch.utils.data import Dataset
 
 class OnlineDataset(Dataset):
-    def __init__(self, raw_data_path: str, sliding_window_size: int, sliding_window_offset: int, forecast_size: int, building_id: int, mode: str, device):
+    def __init__(self, raw_data_path: str, sliding_window_size: int, sliding_window_offset: int, forecast_size: int, building_id: int, mode: str, device, train_length=49824):
 
         data = torch.load(f'{raw_data_path}/{building_id}.pt', weights_only=False)
         data['price'] = torch.load(f'{raw_data_path}/price.pt', weights_only=False)
@@ -17,17 +17,17 @@ class OnlineDataset(Dataset):
             overlap_correction = 0
 
         # 1038 days for ddpg training (1037 clean days)
-        if mode == 'train_full':
+        if mode == 'train':
+            selected_data = data[0:train_length]
+            max_data = torch.tensor((train_length-forecast_size-1)/sliding_window_offset).int() - overlap_correction
+        # 519 days for ddpg training (518 clean days)
+        # if mode == 'train_half':
+        #     selected_data = data[0:24912]
+        #     max_data = torch.tensor((24912-forecast_size-1)/sliding_window_offset).int() - overlap_correction
+        # 1038 days for dt training (518 clean days)
+        elif mode == 'generate':
             selected_data = data[0:49824]
             max_data = torch.tensor((49824-forecast_size-1)/sliding_window_offset).int() - overlap_correction
-        # 519 days for ddpg training (518 clean days)
-        if mode == 'train_half':
-            selected_data = data[0:24912]
-            max_data = torch.tensor((24912-forecast_size-1)/sliding_window_offset).int() - overlap_correction
-        # 519 days for dt training (518 clean days)
-        elif mode == 'generate':
-            selected_data = data[24912:49824]
-            max_data = torch.tensor((24912-forecast_size-1)/sliding_window_offset).int() - overlap_correction
         # 29 days for validation (28 clean days)
         elif mode == 'val':
             selected_data = data[49824:51216]

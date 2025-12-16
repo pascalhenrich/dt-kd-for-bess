@@ -22,7 +22,7 @@ class KdTrainer():
         self.max_ep_len = len(self.train_dataset[0])
 
         spec_dataset = make_dataset(cfg=self.cfg, 
-                                    mode='train_half', 
+                                    mode='train', 
                                     device=self.DEVICE)
         spec_env =  make_env(cfg=self.cfg, 
                              dataset=spec_dataset, 
@@ -126,6 +126,7 @@ class KdTrainer():
         t0 = time.perf_counter()
         eval_time = 0.0
         self.teacher_model.eval()
+        self.student_model.train()
         for iteration in range(self.cfg.component.num_iterations):
             states, actions, rtg, timesteps, mask = self.get_batch()
             action_target = torch.clone(actions)

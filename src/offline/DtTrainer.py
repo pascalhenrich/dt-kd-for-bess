@@ -23,7 +23,7 @@ class DtTrainer():
         self.max_ep_len = len(self.train_dataset[0])
 
         spec_dataset = make_dataset(cfg=self.cfg,
-                                    mode='train_half', 
+                                    mode='train', 
                                     device=self.DEVICE)
         spec_env =  make_env(cfg=self.cfg, 
                              dataset=spec_dataset, 
