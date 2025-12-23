@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 import time
 import os
 
-from utils import make_env, make_dataset
+from utils import make_env, make_dataset, StateEstimatorTransformer
 
 class DdpgTrainer():
     def __init__(self, cfg, device):
@@ -24,9 +24,17 @@ class DdpgTrainer():
         spec_env =  make_env(cfg=self.cfg, dataset=train_dataset, device=self.DEVICE)
         action_spec = spec_env.action_spec
         observation_spec = spec_env.observation_spec['observation']
+
+        state_estimator_transformer = StateEstimatorTransformer(n_frames=self.cfg.component.state_estimator.n_frames, obs_dim=observation_spec.shape[-1], device=self.DEVICE)
+
+        state_estimator_module = TensorDictModule(
+            module=state_estimator_transformer,
+            in_keys=['cat_observation'],
+            out_keys=['state_estimate']
+        )
     
         policy_net = MLP(
-            in_features=observation_spec.shape[-1],
+            in_features=128,
             out_features=action_spec.shape[-1],
             num_cells=self.cfg.component.policy.num_cells,
             activation_class=torch.nn.ReLU,
@@ -35,11 +43,12 @@ class DdpgTrainer():
           
         policy_module = TensorDictModule(
             module=policy_net,
-            in_keys=['observation'],
+            in_keys=['state_estimate'],
             out_keys=['action']
         )
 
         actor = TensorDictSequential(
+            state_estimator_module,
             policy_module,
             TanhModule(
                 spec=action_spec,
@@ -56,13 +65,19 @@ class DdpgTrainer():
         )
         
         exploration_policy = TensorDictSequential(
-            actor,
-            ou_module
+            state_estimator_module,
+            policy_module,
+            ou_module,
+            TanhModule(
+                spec=action_spec,
+                in_keys=['action'],
+                out_keys=['action'],
+            )
         )
 
-        critic = TensorDictModule(
+        critic_module = TensorDictModule(
             module=MLP(
-                in_features=observation_spec.shape[-1] + action_spec.shape[-1],
+                in_features=50 + action_spec.shape[-1],
                 out_features=1,
                 depth=2,
                 num_cells=self.cfg.component.critic.num_cells,
@@ -72,7 +87,13 @@ class DdpgTrainer():
             in_keys=['observation', 'action'],
             out_keys=['state_action_value']
         )
-        
+
+        critic = TensorDictSequential(
+            state_estimator_module,
+            critic_module
+        )
+
+
         self.collector = SyncDataCollector(
             create_env_fn=(make_env(cfg=self.cfg, dataset=train_dataset, device=self.DEVICE)),
             policy=exploration_policy,
@@ -124,8 +145,9 @@ class DdpgTrainer():
 
         for iteration, batch in enumerate(self.collector):
             current_frames = batch.numel()
-            exploration_policy[-1].step(current_frames)
+            exploration_policy[-2].step(current_frames)
             self.replay_buffer.extend(batch)
+        
 
             sample = self.replay_buffer.sample()
             loss_vals = self.loss_module(sample)

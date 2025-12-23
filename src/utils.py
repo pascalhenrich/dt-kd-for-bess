@@ -4,6 +4,8 @@ from torchrl.envs import (
     UnsqueezeTransform,
     Compose,
     InitTracker,
+    CatFrames,
+    SqueezeTransform
 )
 from torch import nn
 from environment.BatteryScheduling import BatteryScheduling
@@ -80,9 +82,16 @@ def make_env(cfg, dataset, device):
                                                                 in_keys=['soe', 'prosumption', 'price', 'cost', 'step'],
                                                                 in_keys_inv=['soe', 'prosumption', 'price', 'cost', 'step']),
                                                 CatTensors(dim=-1,
-                                                        in_keys=['soe', 'prosumption','prosumption_forecast','price','price_forecast'],
+                                                        in_keys=['soe', 'prosumption','price','price_forecast'],
                                                         out_key='observation',
-                                                        del_keys=False)).to(device=device)
+                                                        del_keys=False),
+                                                CatFrames(N=cfg.component.state_estimator.n_frames,
+                                                          dim=-1,
+                                                          in_keys=['observation'],
+                                                          out_keys=['cat_observation'],
+                                                          padding='constant',
+                                                          padding_value=100),
+                                                ).to(device=device)
                             ).to(device=device)
 
 
@@ -132,3 +141,52 @@ def set_deterministic(seed: int = 42):
     torch.backends.cudnn.benchmark = False
     torch.use_deterministic_algorithms(True)
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"  # For CUDA >= 10.2
+
+class StateEstimatorTransformer(nn.Module):
+    def __init__(
+        self,
+        n_frames: int,
+        obs_dim: int,
+        out_dim: int = 128,
+        d_model: int = 128,
+        nhead: int = 4,
+        num_layers: int = 3,
+        dim_feedforward: int = 256,
+        dropout: float = 0.1,
+        device=None,
+    ):
+        super().__init__()
+        self.n_frames = n_frames
+        self.obs_dim = obs_dim
+        self.out_dim = out_dim
+        self.d_model = d_model  
+        self.device = device
+
+        self.in_proj = nn.Linear(obs_dim, d_model, device=self.device)
+        dec_layer = nn.TransformerDecoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            batch_first=True,
+            activation="relu",
+            device=self.device,
+        )
+        self.decoder = nn.TransformerDecoder(dec_layer, num_layers=num_layers)
+
+        self.out_head = nn.Sequential(
+            nn.LayerNorm(d_model, device=self.device),
+            nn.Linear(d_model, out_dim, device=self.device),
+        )
+
+    def forward(self, cat_observation: torch.Tensor) -> torch.Tensor:
+        x = cat_observation.reshape(-1, self.n_frames, self.obs_dim)
+        batch_size = x.shape[0]
+        dummy_memory = torch.zeros(batch_size, self.n_frames, self.d_model, device=self.device)
+        causal_mask = torch.triu(torch.full((self.n_frames, self.n_frames), float("-inf"), device=self.device), diagonal=1)
+        x = self.in_proj(x)
+        x = self.decoder(tgt=x, memory=dummy_memory, tgt_mask=causal_mask)
+        out = self.out_head(x[:,-1,:])
+        out = out.squeeze(-2)
+        return out
+

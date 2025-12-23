@@ -4,7 +4,7 @@ dataset:
   train_length: 49824
   sliding_window_size: 144
   sliding_window_offset: 24
-  forecast_horizon: 24
+  forecast_horizon: 47
 policy:
   num_cells: [400,300]
 ou:
@@ -14,7 +14,7 @@ critic:
   num_cells: [400,300]
 collector_frames_per_batch: 100
 replay_buffer_size: 100000
-batch_size: 128
+batch_size: 64
 delay_actor: False
 delay_value: True
 gamma: 0.99
@@ -25,3 +25,5 @@ lr:
 val_interval: 10
 early_stopping_patience: 2000
 max_train_iterations:
+state_estimator:
+  n_frames: 12

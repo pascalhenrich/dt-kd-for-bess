@@ -68,7 +68,7 @@ class BatteryScheduling(EnvBase):
         return td_out
 
     def _step(self, td_in):
-        action = td_in['action'].squeeze(-1).detach()
+        action = td_in['action'].squeeze(-1).detach().clone()
         step = td_in['step'] + 1
         old_soe = td_in['soe']
         params = td_in['params']
@@ -103,7 +103,6 @@ class BatteryScheduling(EnvBase):
             batch_size=td_in.shape,
             device=td_in.device,
         )
-        
         return td_out
     
 
