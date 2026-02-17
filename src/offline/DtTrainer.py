@@ -211,6 +211,7 @@ class DtTrainer():
         return final_cost
         
     def test(self, target_return):
+        logger.info('Start testing DT')
         self.model.load_state_dict(torch.load(f'{self.cfg.model_path}/transformer.pth'))
         self.model.eval()
         with torch.no_grad():
@@ -221,6 +222,8 @@ class DtTrainer():
             action_spec = test_env.base_env.action_spec.space
             _td = test_env.reset()
             td = TensorDict({},batch_size=[1344],device=self.DEVICE)
+
+            t0 = time.perf_counter()
 
             states = _td['observation']
             actions = torch.zeros((0, 1), device=self.DEVICE, dtype=torch.float32)
@@ -255,7 +258,10 @@ class DtTrainer():
                 timesteps = torch.cat(
                     [timesteps,
                     torch.ones((1, 1), device=self.DEVICE, dtype=torch.long) * (i+1)], dim=1)
+            t1 = time.perf_counter()
+            inference_time = t1 - t0
             final_cost = torch.sum(td['next']['cost'], dim=0)
             logger.info(f'Test cost: {final_cost.item()}')
-            return final_cost
+            logger.info(f'Inference time: {inference_time} seconds')
+            return final_cost, inference_time
                 

@@ -46,15 +46,31 @@ def main(cfg: HydraConfig):
         case 'dt':
             trainer = DtTrainer(cfg=cfg, device=DEVICE)
             trainer.setup()
-            metrics = trainer.train()
-            if len(cfg.component.dataset.val_list) == 0:
-                test = trainer.test(torch.tensor(cfg.component.target_return.test, device=DEVICE))
-                metrics['test'] = test
-            elif len(cfg.component.dataset.val_list) > 0:
-                for index in range(len(cfg.component.dataset.val_list)):
-                    cfg.building_id = cfg.component.dataset.val_list[index]
-                    test = trainer.test(torch.tensor(cfg.component.target_return.test[index], device=DEVICE))
-                    metrics[f'test_{cfg.building_id}'] = test
+            match cfg.component.mode:
+                case 'train':
+                    metrics = trainer.train()
+                    if len(cfg.component.dataset.val_list) == 0:
+                        test, time = trainer.test(torch.tensor(cfg.component.target_return.test, device=DEVICE))
+                        metrics['test'] = test
+                        metrics['inference_time'] = time
+                    elif len(cfg.component.dataset.val_list) > 0:
+                        for index in range(len(cfg.component.dataset.val_list)):
+                            cfg.building_id = cfg.component.dataset.val_list[index]
+                            test, time = trainer.test(torch.tensor(cfg.component.target_return.test[index], device=DEVICE))
+                            metrics[f'test_{cfg.building_id}'] = test
+                            metrics[f'inference_time_{cfg.building_id}'] = time
+                case 'test':
+                    metrics = {}
+                    if len(cfg.component.dataset.val_list) == 0:
+                        test, time = trainer.test(torch.tensor(cfg.component.target_return.test, device=DEVICE))
+                        metrics['test'] = test
+                        metrics['inference_time'] = time
+                    elif len(cfg.component.dataset.val_list) > 0:
+                        for index in range(len(cfg.component.dataset.val_list)):
+                            cfg.building_id = cfg.component.dataset.val_list[index]
+                            test, time = trainer.test(torch.tensor(cfg.component.target_return.test[index], device=DEVICE))
+                            metrics[f'test_{cfg.building_id}'] = test
+                            metrics[f'inference_time_{cfg.building_id}'] = time
             torch.save(metrics, f'{cfg.output_path}/metrics.pt')
         case 'kd':
             trainer = KdTrainer(cfg=cfg, device=DEVICE)
